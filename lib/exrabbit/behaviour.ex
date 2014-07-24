@@ -13,7 +13,7 @@ defmodule Exrabbit.Subscriber do
           {nil, _}   ->
             queue = declare_queue channel
             bind_queue channel, queue, args[:exchange]
-            subscribe channel, queue 
+            subscribe channel, queue
         end
         amqp_monitor = :erlang.monitor :process, amqp
         channel_monitor = :erlang.monitor :process, channel
