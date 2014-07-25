@@ -1,13 +1,5 @@
 require Record
 
-defmodule Exrabbit do
-  use Application
-
-  def start(_type, _args) do
-    Exrabbit.Supervisor.start_link
-  end
-end
-
 defmodule Exrabbit.Framing do
   Record.defrecord :pbasic, :'P_basic', Record.extract(:'P_basic', from_lib: "rabbit_common/include/rabbit_framing.hrl")
 end
