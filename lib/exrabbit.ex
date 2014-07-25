@@ -52,8 +52,9 @@ defmodule Exrabbit.Utils do
   import Exrabbit.Framing
 
   defp get_host do
-    'localhost'
+    Application.get_env(:exrabbit, :broker_host, "localhost") |> String.to_char_list
   end
+
   def connect, do: connect([])
   def connect(args) do
     connection_settings = [

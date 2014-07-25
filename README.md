@@ -1,7 +1,45 @@
-# Exrabbit
+Exrabbit
+========
 
-Edited to handle more option in exchanges / queues. Major work done by d0rc
+Elixir client for RabbitMQ, based on [rabbitmq-erlang-client][1].
 
+  [1]: https://github.com/rabbitmq/rabbitmq-erlang-client
+
+
+## Goals and Features
+
+This project doesn't aim to be a swap-in replacement for the Erlang client. It
+mostly provides conveniences for common usage patterns. The most prominent
+addition on top of the Erlang client is a set of DSLs that make writing common
+types of AMQP producers and consumers a breeze.
+
+
+## Installation
+
+Add Exrabbit as a dependency to your project:
+
+```elixir
+def application do
+  [applications: [:exrabbit]]
+end
+
+def deps do
+  [{:exrabbit, github: "inbetgames/exrabbit"}]
+end
+```
+
+Configure using `config.exs` (see the bundled one for the available settings) or
+YAML (via [Sweetconfig][2]).
+
+  [2]: https://github.com/inbetgames/sweetconfig
+
+
+## Usage (DSL)
+
+
+## Usage (basic)
+
+**NOTE**: _The instructions below may be outdated due to the ongoing rewrite of the library. Stay tuned for an updated Readme._
 
 Easy way to get a queue/exchange worker:
 
@@ -69,7 +107,7 @@ To get messages, almost the same, but functions are
 Exrabbit.Utils.get_messages channel, "testQueue"
 case Exrabbit.Utils.get_messages_ack channel, "testQueue" do
 	nil -> IO.puts "No messages waiting"
-	[tag: tag, content: message] -> 
+	[tag: tag, content: message] ->
 		IO.puts "Got message #{message}"
 		Exrabbit.Utils.ack tag # acking message
 end
@@ -111,25 +149,25 @@ Or same, using behaviours:
 
 
 ```elixir
-defmodule Test do 
-  use Exrabbit.Subscriber 
+defmodule Test do
+  use Exrabbit.Subscriber
 
-  def handle_message(msg, _state) do 
-    case parse_message(msg) do 
-      nil -> 
+  def handle_message(msg, _state) do
+    case parse_message(msg) do
+      nil ->
         IO.puts "Nil"
-      {tag,json} -> 
+      {tag,json} ->
         IO.puts "Msg: #{json}"
-        ack _state[:channel], tag 
-      {tag,json,reply_to} -> 
+        ack _state[:channel], tag
+      {tag,json,reply_to} ->
         IO.puts "For RPC messaging: #{json}"
         publish(_state[:channel], "", reply_to, "#{json}") # Return ECHO
-        ack _state[:channel], tag 
-    end  
-  end 
+        ack _state[:channel], tag
+    end
+  end
 end
 
-:gen_server.start Test, [queue: "testQ"], []   
+:gen_server.start Test, [queue: "testQ"], []
 ```
 
 
