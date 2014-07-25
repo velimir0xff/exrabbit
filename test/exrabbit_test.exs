@@ -7,7 +7,8 @@ defmodule ExrabbitTest do
   @test_payload "Hello тест ありがとう＾ー＾"
 
   test "basic send receive" do
-    import Exrabbit.Utils
+    alias Exrabbit.Connection, as: Conn
+    alias Exrabbit.Channel, as: Chan
     require Exrabbit.Defs
 
     msg_count = 3
@@ -27,30 +28,30 @@ defmodule ExrabbitTest do
     end)
 
     # receive
-    recv_conn = connect()
-    recv_chan = channel_open(recv_conn)
-    declare_queue(recv_chan, @test_queue_name, true)
-    subscribe(recv_chan, @test_queue_name, pid)
+    recv_conn = Conn.open()
+    recv_chan = Chan.open(recv_conn)
+    Chan.declare_queue(recv_chan, @test_queue_name, true)
+    Chan.subscribe(recv_chan, @test_queue_name, pid)
 
     assert_receive {^pid, :amqp_started}
     refute_receive _
 
     # send
-    conn = connect()
-    chan = channel_open(conn)
-    declare_queue(chan, @test_queue_name, true)
+    conn = Conn.open()
+    chan = Chan.open(conn)
+    Chan.declare_queue(chan, @test_queue_name, true)
     Enum.each(1..msg_count, fn _ ->
-      publish(chan, "", @test_queue_name, @test_payload)
+      Chan.publish(chan, "", @test_queue_name, @test_payload)
     end)
-    :ok = channel_close(chan)
-    :ok = disconnect(conn)
+    :ok = Chan.close(chan)
+    :ok = Conn.close(conn)
 
     Enum.each(1..msg_count, fn _ ->
       assert_receive {^pid, :amqp_received, @test_payload}
     end)
     refute_receive _
 
-    :ok = channel_close(recv_chan)
-    :ok = disconnect(recv_conn)
+    :ok = Chan.close(recv_chan)
+    :ok = Conn.close(recv_conn)
   end
 end

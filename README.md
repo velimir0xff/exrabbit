@@ -8,7 +8,7 @@ Elixir client for RabbitMQ, based on [rabbitmq-erlang-client][1].
 
 ## Goals and Features
 
-This project doesn't aim to be a swap-in replacement for the Erlang client. It
+This project doesn't aim to be a complete replacement for the Erlang client. It
 mostly provides conveniences for common usage patterns. The most prominent
 addition on top of the Erlang client is a set of DSLs that make writing common
 types of AMQP producers and consumers a breeze.
