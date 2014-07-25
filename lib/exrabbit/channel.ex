@@ -1,6 +1,19 @@
 defmodule Exrabbit.Channel do
   use Exrabbit.Defs
 
+  alias Exrabbit.Connection, as: Conn
+
+  @doc """
+  Open a new connection with default settings and create a new channel on it.
+
+  Returns `{<chan>, <conn>}` or fails.
+  """
+  def open() do
+    conn = Conn.open()
+    chan = open(conn)
+    {chan, conn}
+  end
+
   @doc """
   Open a new channel on an established connection.
 
@@ -13,52 +26,41 @@ defmodule Exrabbit.Channel do
 
   @doc """
   Close previously opened channel.
+
+  If the argument is a tuple `{<chan>, <conn>}`, closes the connection too.
   """
+  def close({chan, conn}) do
+    :ok = close(chan)
+    Conn.close(conn)
+  end
+
   def close(chan), do: :amqp_channel.close(chan)
 
   ### Exchange related
 
-  def declare_exchange(channel, exchange) do
-    exchange_declare_ok() = :amqp_channel.call channel, exchange.declare(exchange: exchange, type: "fanout", auto_delete: true)
-    exchange
-  end
-
-  def declare_exchange(channel, exchange, type, autodelete) do
-    exchange_declare_ok() = :amqp_channel.call channel, exchange_declare(exchange: exchange, type: type, auto_delete: autodelete)
-    exchange
-  end
-
-  def declare_exchange(channel, exchange, type, autodelete, durable) do
-    exchange_declare_ok() = :amqp_channel.call channel, exchange_declare(exchange: exchange, type: type, auto_delete: autodelete, durable: durable)
-    exchange
+  def declare_exchange(chan, exchange) do
+    exchange_declare_ok() = :amqp_channel.call(chan, exchange)
+    exchange_declare(exchange, :exchange)
   end
 
   ### Queue related
 
-  def declare_queue(channel) do
-    queue_declare_ok(queue: queue) = :amqp_channel.call channel, queue_declare(auto_delete: true)
-    queue
+  @doc """
+  Declare an unnamed queue with `:auto_delete` set to `true`.
+  """
+  def declare_queue(chan) do
+    queue_declare_ok(queue: name) = :amqp_channel.call(chan, queue_declare(auto_delete: true))
+    name
   end
 
-  def declare_queue_exclusive(channel) do
-    queue_declare_ok(queue: queue) = :amqp_channel.call channel, queue_declare(exclusive: true)
-    queue
+  @doc """
+  Declare a queue using the supplied record.
+  """
+  def declare_queue(chan, queue) do
+    queue_declare_ok(queue: name) = :amqp_channel.call(chan, queue)
+    name
   end
 
-  def declare_queue(channel, queue) do
-    queue_declare_ok(queue: queue) = :amqp_channel.call channel, queue_declare(queue: queue)
-    queue
-  end
-
-  def declare_queue(channel, queue, autodelete) do
-    queue_declare_ok(queue: queue) = :amqp_channel.call channel, queue_declare(queue: queue, auto_delete: autodelete)
-    queue
-  end
-
-  def declare_queue(channel, queue, autodelete, durable) do
-    queue_declare_ok(queue: queue) = :amqp_channel.call channel, queue_declare(queue: queue, auto_delete: autodelete, durable: durable)
-    queue
-  end
   def rpc(channel, exchange, routing_key, message, reply_to) do
     :amqp_channel.call channel, basic_publish(exchange: exchange, routing_key: routing_key), amqp_msg(props: pbasic(reply_to: reply_to), payload: message)
   end
