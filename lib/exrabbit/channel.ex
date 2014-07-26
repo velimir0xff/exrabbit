@@ -69,22 +69,24 @@ defmodule Exrabbit.Channel do
     :amqp_channel.call channel, basic_publish(exchange: exchange, routing_key: routing_key), amqp_msg(props: pbasic(reply_to: reply_to, headers: ({"uuid", :longstr, uuid})  ), payload: message)
   end
 
-
-  def publish(channel, exchange, routing_key, message) do
-    publish(channel, exchange, routing_key, message, :no_confirmation)
+  def publish(chan, message, options) do
+    exchange = Keyword.get(options, :exchange, "")
+    routing_key = Keyword.get(options, :routing_key, "")
+    wait = Keyword.get(options, :wait_confirmation, false)
+    publish(chan, exchange, routing_key, message, wait)
   end
 
-  def publish(channel, exchange, routing_key, message, :no_confirmation) do
+  defp publish(channel, exchange, routing_key, message, false) do
     :amqp_channel.call channel, basic_publish(exchange: exchange, routing_key: routing_key), amqp_msg(payload: message)
   end
 
-  def publish(channel, exchange, routing_key, message, :wait_confirmation) do
+  defp publish(channel, exchange, routing_key, message, true) do
     root = self
     confirm_select_ok() = :amqp_channel.call channel, confirm_select()
     :ok = :amqp_channel.register_confirm_handler channel, spawn fn ->
       wait_confirmation(root, channel)
     end
-    :ok = publish(channel, exchange, routing_key, message, :no_confirmation)
+    :ok = publish(channel, exchange, routing_key, message, false)
     receive do
       {:message_confirmed, _data} -> :ok
       {:message_lost, _data} -> {:error, :lost}

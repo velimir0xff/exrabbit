@@ -41,8 +41,6 @@ settings) or YAML (via [Sweetconfig][2]).
 
 ## Usage (basic)
 
-### Publishing to a queue
-
 In all of the example below we will assume the following aliases have been
 defined:
 
@@ -55,6 +53,8 @@ alias Exrabbit.Consumer, as: Consumer
 # this call is needed when working with records
 require Exrabbit.Records
 ```
+
+### Publishing to a queue
 
 A basic example of a publisher:
 
@@ -82,28 +82,55 @@ producer = Producer.new(chan, queue: "hello_queue")
 Producer.publish(producer, stream)
 ```
 
-To adjust properties of a queue, one can call `Chan.declare_queue` right after
-opening the channel:
+To adjust properties of a queue, one can use a record for the queue:
 
 ```elixir
 conn = %Conn{channel: chan} = Conn.open(with_channel: true)
 
 # we are using a record provided by the Erlang client here
 queue = Exrabbit.Records.queue_declare(queue: "name", auto_delete: true, exclusive: false)
-Chan.declare_queue(chan, queue)
-
-# afterwards, we can use either the queue record or just its name
 producer = Producer.new(chan, queue: queue)
 Producer.publish(producer, "message")
 ```
 
+### Aside: working with records
+
+__Temporary section, please disregard__
+
+In order to provide all of functionality implemented by the Erlang client,
+Exrabbit relies on Erlang records that represent AMQP methods. A single method
+is an instance of a record and it is normally executed on a channel.
+
+Exrabbit allows you to execute one or more methods with a single function call:
+
+```elixir
+exchange = Exrabbit.Records.exchange_declare(exchange: "logs", type: "fanout")
+queue = Exrabbit.Records.queue_declare(queue: "q", exclusive: true)
+bind = Exrabbit.Records.queue_bind(queue: "q", exchange: "logs")
+publish = {
+  Exrabbit.Records.basic_publish(exchange: "logs"),
+  Exrabbit.Records.amqp_msg(payload: "hello")
+}
+Chan.exec(chan, [exchange, queue, bind, publish])
+
+# high-level equivalent of the above code
+exchange = Exrabbit.Records.exchange_declare(exchange: "logs", type: "fanout")
+queue = Exrabbit.Records.queue_declare(queue: "q", exclusive: true)
+producer = Producer.new(chan, exchange: exchange, queue: queue)
+Producer.publish(producer, "hello")
+```
+
+Normally, the high-level API provides a more succinct way to express common
+patterns.
+
 ### Publishing to an exchange
 
 Most of the time you'll be working with exchanges because they provide a more
-flexible way to route messages to different consumers.
+flexible way to route messages to different queues and eventually consumers.
 
 ```elixir
-conn = %Conn{channel: chan} = Conn.open(with_channel: true)
+# :with_channel is true by default
+conn = %Conn{channel: chan} = Conn.open()
 
 # again, using a record from the Erlang client
 exchange = Exrabbit.Records.exchange_declare(exchange: "logs", type: "fanout")

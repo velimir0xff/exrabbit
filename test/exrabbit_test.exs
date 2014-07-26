@@ -7,6 +7,7 @@ defmodule ExrabbitTest do
   @test_payload "Hello тест ありがとう＾ー＾"
 
   test "basic send receive" do
+    alias Exrabbit.Connection, as: Conn
     alias Exrabbit.Channel, as: Chan
     use Exrabbit.Defs
 
@@ -29,7 +30,7 @@ defmodule ExrabbitTest do
     queue = queue_declare(queue: @test_queue_name, auto_delete: true)
 
     # receive
-    recv_conn = {recv_chan, _} = Chan.open()
+    recv_conn = %Conn{channel: recv_chan} = Conn.open()
     Chan.declare_queue(recv_chan, queue)
     Chan.subscribe(recv_chan, @test_queue_name, pid)
 
@@ -37,18 +38,51 @@ defmodule ExrabbitTest do
     refute_receive _
 
     # send
-    conn = {chan, _} = Chan.open()
-    Chan.declare_queue(chan, queue)
+    conn = %Conn{channel: chan} = Conn.open()
+    producer = Exrabbit.Producer.new(chan, queue: queue)
     Enum.each(1..msg_count, fn _ ->
-      Chan.publish(chan, "", @test_queue_name, @test_payload)
+      Exrabbit.Producer.publish(producer, @test_payload)
     end)
-    :ok = Chan.close(conn)
+    :ok = Conn.close(conn)
 
     Enum.each(1..msg_count, fn _ ->
       assert_receive {^pid, :amqp_received, @test_payload}
     end)
     refute_receive _
 
-    :ok = Chan.close(recv_conn)
+    :ok = Conn.close(recv_conn)
   end
+
+  #  test "low-level send receive" do
+  #    alias Exrabbit.Channel, as: Chan
+  #    use Exrabbit.Defs
+  #
+  #    # send
+  #    conn = {chan, _} = Chan.open()
+  #
+  #    exchange_rm = exchange_delete(exchange: "test_exchange")
+  #    exchange = exchange_declare(exchange: "test_exchange", type: "direct", durable: true)
+  #    Chan.exec(chan, [exchange_rm, exchange])
+  #
+  #    # receive
+  #    recv_conn = {recv_chan, _} = Chan.open()
+  #
+  #    queue1 = queue_declare(queue: "queue_black", auto_delete: true)
+  #    bind1 = queue_bind(exchange: "test_exchange", routing_key: "black")
+  #    queue2 = queue_declare(queue: "queue_red", auto_delete: true)
+  #    bind2 = queue_bind(exchange: "test_exchange", routing_key: "red")
+  #    Chan.exec(recv_chan, [exchange, queue1, bind1, queue2, bind2])
+  #
+  #    # send
+  #    Chan.publish(chan, "test_exchange", "black", "hello black exchange!")
+  #    Chan.publish(chan, "test_exchange", "red", "hello red exchange!")
+  #
+  #    :ok = Chan.close(conn)
+  #
+  #    # receive
+  #    assert "hello black exchange!" = Chan.get_messages(recv_chan, "queue_black")
+  #    assert "hello red exchange!" = Chan.get_messages(recv_chan, "queue_red")
+  #
+  #    :ok = Chan.close(recv_conn)
+  #  end
 end

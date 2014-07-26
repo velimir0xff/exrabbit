@@ -1,10 +1,13 @@
 defmodule Exrabbit.Connection do
   use Exrabbit.Defs
 
+  defstruct [connection: nil, channel: nil]
+  alias __MODULE__
+
   @doc """
   Connect to a broker.
 
-  Returns a new connection or fails.
+  Returns a new connection struct or fails.
 
   ## Options
 
@@ -13,6 +16,8 @@ defmodule Exrabbit.Connection do
     * `host: <string>` - broker host
     * `virtual_host: <string>` - the name of the virtual host in the broker
     * `heartbeat: <int>` - heartbeat interval in seconds (default: 1)
+    * `with_channel: <bool>` - when `true`, also opens a channel and puts it
+      into the returned struct
 
   """
   def open(options \\ []) do
@@ -31,13 +36,23 @@ defmodule Exrabbit.Connection do
       virtual_host: conn_settings[:virtual_host],
       heartbeat: conn_settings[:heartbeat]
     ))
-    conn
+
+    if Keyword.get(options, :with_channel, true) do
+      %Connection{connection: conn, channel: Exrabbit.Channel.open(conn)}
+    else
+      %Connection{connection: conn}
+    end
   end
 
   @doc """
   Close previously established connection.
   """
-  def close(conn), do: :amqp_connection.close(conn)
+  def close(%Connection{connection: conn, channel: chan}) do
+    if chan do
+      :ok = Exrabbit.Channel.close(chan)
+    end
+    :amqp_connection.close(conn)
+  end
 
   ###
 
