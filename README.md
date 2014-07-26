@@ -6,12 +6,14 @@ Elixir client for RabbitMQ, based on [rabbitmq-erlang-client][1].
   [1]: https://github.com/rabbitmq/rabbitmq-erlang-client
 
 
-## Goals and Features
+## Rationale
 
-This project doesn't aim to be a complete replacement for the Erlang client. It
-mostly provides conveniences for common usage patterns. The most prominent
-addition on top of the Erlang client is a set of DSLs that make writing common
-types of AMQP producers and consumers a breeze.
+This project's aim is not to be a complete replacement for the Erlang client.
+Instead, it captures common usage patterns and exposes them as a higher level
+API.
+
+Climbing the ladder of abstraction even higher, Exrabbit provides a set of DSLs
+that make writing common types of AMQP producers and consumers a breeze.
 
 
 ## Installation
@@ -28,8 +30,8 @@ def deps do
 end
 ```
 
-Configure using `config.exs` (see the bundled one for the available settings) or
-YAML (via [Sweetconfig][2]).
+Configure it using `config.exs` (see the bundled one for the available
+settings) or YAML (via [Sweetconfig][2]).
 
   [2]: https://github.com/inbetgames/sweetconfig
 
@@ -39,7 +41,137 @@ YAML (via [Sweetconfig][2]).
 
 ## Usage (basic)
 
-**NOTE**: _The instructions below may be outdated due to the ongoing rewrite of the library. Stay tuned for an updated Readme._
+### Publishing to a queue
+
+In all of the example below we will assume the following aliases have been
+defined:
+
+```elixir
+alias Exrabbit.Connection, as: Conn
+alias Exrabbit.Channel, as: Chan
+alias Exrabbit.Producer, as: Producer
+alias Exrabbit.Consumer, as: Consumer
+
+# this call is needed when working with records
+require Exrabbit.Records
+```
+
+A basic example of a publisher:
+
+```elixir
+# Open both a connection to the broker and a channel in one go
+conn = %Conn{channel: chan} = Conn.open(with_channel: true)
+
+# Create a producer on the chan
+# producer is just a struct encapsulating the exchange (default one in this case)
+# and the queue
+producer = Producer.new(chan, queue: "hello_queue")
+Producer.publish(producer, "message")
+Producer.publish(producer, "bye-bye")
+
+# Close the channel and connection in one go
+Conn.close(conn)
+```
+
+One can also feed a stream of binaries as input to a queue:
+
+```elixir
+# Create a producer on the chan
+stream = IO.binstream(:stdio, :line)
+producer = Producer.new(chan, queue: "hello_queue")
+Producer.publish(producer, stream)
+```
+
+To adjust properties of a queue, one can call `Chan.declare_queue` right after
+opening the channel:
+
+```elixir
+conn = %Conn{channel: chan} = Conn.open(with_channel: true)
+
+# we are using a record provided by the Erlang client here
+queue = Exrabbit.Records.queue_declare(queue: "name", auto_delete: true, exclusive: false)
+Chan.declare_queue(chan, queue)
+
+# afterwards, we can use either the queue record or just its name
+producer = Producer.new(chan, queue: queue)
+Producer.publish(producer, "message")
+```
+
+### Publishing to an exchange
+
+Most of the time you'll be working with exchanges because they provide a more
+flexible way to route messages to different consumers.
+
+```elixir
+conn = %Conn{channel: chan} = Conn.open(with_channel: true)
+
+# again, using a record from the Erlang client
+exchange = Exrabbit.Records.exchange_declare(exchange: "logs", type: "fanout")
+fanout = Producer.new(chan, exchange: exchange)
+
+Producer.publish(fanout, "[info] some log")
+Producer.publish(fanout, "[error] crashed")
+
+
+exchange = Exrabbit.Records.exchange_declare(exchange: "more_logs", type: "topic")
+topical = Producer.new(chan, exchange: exchange)
+
+Producer.publish(topical, "some log", routing_key: "logs.info")
+Producer.publish(topical, "crashed", routing_key: "logs.error")
+
+Conn.close(conn)
+```
+
+Side note: you don't have to use producers. Messages can be published in a more
+canonical way using `Chan.publish`:
+
+```elixir
+conn = %Conn{channel: chan} = Conn.open(with_channel: true)
+
+exchange = Exrabbit.Records.exchange_declare(exchange: "more_logs", type: "topic")
+Chan.publish(chan, "message", exchange: exchange, routing_key: "logs.info")
+```
+
+### Receiving messages
+
+When receiving messages, the client sets up a queue, binds it to an exchange
+and subscribes to the queue to be notified of incoming messages:
+
+```elixir
+conn = %Conn{channel: chan} = Conn.open(with_channel: true)
+
+topical_exchange = Exrabbit.Records.exchange_declare(exchange: "more_logs", type: "topic")
+queue = Exrabbit.Records.queue_declare(exclusive: true)
+
+# bind the queue to the exchange and subscribe to it in one go
+# the :out argument allows for different listening strategies
+Consumer.new(chan, exchange: topical_exchange, queue: queue, out: self())
+
+receive do
+  ... -> ...
+end
+
+
+# redirecting incoming messages to a stream
+stream = IO.binstream(:stdio, :line)
+Consumer.new(chan, exchange: topical_exchange, queue: queue, out: stream)
+
+
+# when :out is omitted, it is possible to subscribe later on or request
+messages one by one
+consumer = Consumer.new(chan, exchange: topical_exchange, queue: queue)
+
+{:ok, message} = Consumer.get(consumer, no_ack: true)
+
+
+Conn.close(conn)
+```
+
+
+
+
+
+## OLD README ##
 
 Easy way to get a queue/exchange worker:
 
