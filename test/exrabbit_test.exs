@@ -13,24 +13,17 @@ defmodule ExrabbitTest do
     msg_count = 3
 
     parent = self()
-    pid = spawn_link(fn ->
-      receive do
-        Exrabbit.Defs.basic_consume_ok() ->
-          send(parent, {self(), :amqp_started})
-      end
-      Enum.each(1..msg_count, fn _ ->
-        receive do
-          {Exrabbit.Defs.basic_deliver(), Exrabbit.Defs.amqp_msg(payload: body)} ->
-            send(parent, {self(), :amqp_received, body})
-        end
-      end)
-    end)
-
+    subfun = fn
+      :start -> send(parent, {self(), :amqp_started})
+      :end -> send(parent, {self(), :amqp_finished})
+      {:msg, message} -> send(parent, {self(), :amqp_received, message})
+    end
     queue = queue_declare(queue: @test_queue_name, auto_delete: true)
 
     # receive
     recv_conn = %Conn{channel: recv_chan} = Conn.open()
-    Exrabbit.Consumer.new(recv_chan, queue: queue, subscribe: pid)
+    consumer = %Exrabbit.Consumer{pid: pid} =
+      Exrabbit.Consumer.new(recv_chan, queue: queue, subscribe: subfun)
 
     assert_receive {^pid, :amqp_started}
     refute_receive _
@@ -46,6 +39,10 @@ defmodule ExrabbitTest do
     Enum.each(1..msg_count, fn _ ->
       assert_receive {^pid, :amqp_received, @test_payload}
     end)
+    refute_receive _
+
+    Exrabbit.Consumer.unsubscribe(consumer)
+    assert_receive {^pid, :amqp_finished}
     refute_receive _
 
     :ok = Conn.close(recv_conn)

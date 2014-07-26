@@ -1,5 +1,7 @@
 defmodule Exrabbit.Consumer do
-  defstruct [channel: nil, queue: ""]
+  use Exrabbit.Defs
+
+  defstruct [channel: nil, queue: "", pid: nil, tag: nil]
   alias __MODULE__
   alias Exrabbit.Common
 
@@ -26,10 +28,20 @@ defmodule Exrabbit.Consumer do
       queue on the channel. If an empty string is passed, the name will be
       assigned by the broker.
 
-    * `:subscribe` - Subsribe the given process (identified by pid or
-      registered name) to receive messages from the queue. Allowed values:
-      `<pid or atom>` or a value returned from
-      `Exrabbit.Consumer.process(pid)`.
+    * `:subscribe` - Subsribe a process (identified by pid or registered name)
+      or a function to receive messages from the queue.
+
+    * `:into` - Feed incoming messages into the given process, stream, or
+      function as they arrive.
+
+  ## Subscription semantics
+
+  When supplying the `:subscribe` option or calling `Consumer.subscribe/2`, the
+  target process will begin receiving messages from the queue.
+
+  Supplying the `:into` option or calling `Consumer.consume/2` will block the
+  calling process until the message queue is deleted or the connection is
+  closed.
 
   """
   def new(chan, options) do
@@ -40,14 +52,91 @@ defmodule Exrabbit.Consumer do
     Common.bind_queue(chan, exchange, queue, binding_key)
 
     consumer = %Consumer{channel: chan, queue: queue}
-    if pid=Keyword.get(options, :subscribe, false) do
-      subscribe(consumer, pid)
+    validate_subscribe_options(options)
+    cond do
+      pid=Keyword.get(options, :subscribe, false) ->
+        subscribe(consumer, pid)
+      sink=Keyword.get(options, :into, nil) ->
+        consume(consumer, sink)
+      true -> consumer
     end
-    consumer
   end
 
-  def subscribe(consumer=%Consumer{channel: chan, queue: queue}, pid) do
-    Exrabbit.Channel.subscribe(chan, queue, pid)
-    consumer
+  @doc """
+  Subscribe a consumer to a queue.
+
+  Returns a new `Consumer` struct that encapsulates the pid of the subcribed
+  process and an internal tag that can be used to unsubscribe from the queue.
+
+  If the function is passed, a service process will be spawned inside of which
+  it will be invoked.
+  """
+  def subscribe(consumer=%Consumer{channel: chan, queue: queue}, target) do
+    pid = case target do
+      pid when is_pid(pid) -> pid
+      fun when is_function(fun, 1) ->
+        spawn_service_proc(fun)
+    end
+    tag = Exrabbit.Channel.subscribe(chan, queue, pid)
+    %Consumer{consumer | tag: tag, pid: pid}
+  end
+
+  @doc """
+  Unsubscribe from the queue.
+
+  Returns a new `Consumer` struct.
+  """
+  def unsubscribe(consumer=%Consumer{channel: chan, tag: tag, pid: pid}) do
+    basic_cancel_ok() = :amqp_channel.call(chan, basic_cancel(consumer_tag: tag))
+    send_unsubscribe_message(pid)
+    %Consumer{consumer | tag: nil, pid: nil}
+  end
+
+  def consume(consumer, into: pid) when is_pid(pid) do
+    IO.puts "FLUSHING MESSAGES INTO #{inspect pid}"
+    :ok
+  end
+
+  def consume(consumer, into: fun) when is_function(fun, 1) do
+    IO.puts "FLUSHING MESSAGES INTO #{inspect fun}"
+    :ok
+  end
+
+  def consume(consumer, into: stream) do
+    if nil?(Collectable.impl_for(stream)) do
+      raise "Expected a stream in consume(). Got #{inspect stream}"
+    end
+    IO.puts "FLUSHING MESSAGES INTO #{inspect stream}"
+    :ok
+  end
+
+  ###
+
+  defp validate_subscribe_options(options) do
+    if options[:subscribe] && options[:into] do
+      raise "Only one of :subscribe or :into can be used at once"
+    end
+  end
+
+  defp spawn_service_proc(fun) do
+    spawn_link(fn -> service_loop(fun) end)
+  end
+
+  defp send_unsubscribe_message(pid) do
+    send(pid, :finita)
+  end
+
+  defp service_loop(fun) do
+    receive do
+      Exrabbit.Defs.basic_consume_ok() ->
+        fun.(:start)
+        service_loop(fun)
+      {Exrabbit.Defs.basic_deliver(), Exrabbit.Defs.amqp_msg(payload: body)} ->
+        fun.({:msg, body})
+        service_loop(fun)
+      :finita ->
+        fun.(:end)
+        :ok
+    end
   end
 end
