@@ -143,8 +143,8 @@ conn = %Conn{channel: chan} = Conn.open(with_channel: true)
 topical_exchange = Exrabbit.Records.exchange_declare(exchange: "more_logs", type: "topic")
 queue = Exrabbit.Records.queue_declare(exclusive: true)
 
-# bind the queue to the exchange and subscribe to it in one go
-# the :out argument allows for different listening strategies
+# bind the queue to the exchange and subscribe to it in one go;
+# the :out argument enables different listening strategies
 Consumer.new(chan, exchange: topical_exchange, queue: queue, out: self())
 
 receive do
@@ -158,7 +158,7 @@ Consumer.new(chan, exchange: topical_exchange, queue: queue, out: stream)
 
 
 # when :out is omitted, it is possible to subscribe later on or request
-messages one by one
+# messages one by one
 consumer = Consumer.new(chan, exchange: topical_exchange, queue: queue)
 
 {:ok, message} = Consumer.get(consumer, no_ack: true)
