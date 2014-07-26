@@ -1,12 +1,12 @@
-defmodule Exrabbit.Producer do
-  defstruct [channel: nil, exchange: "", routing_key: ""]
+defmodule Exrabbit.Consumer do
+  defstruct [channel: nil, queue: ""]
   alias __MODULE__
   alias Exrabbit.Common
 
   @doc """
-  Create a new producer bound to a channel.
+  Create a new consumer bounds to a channel.
 
-  Returns a `Producer` struct.
+  Returns a new `Consumer` struct.
 
   This function declares the exchange and the queue when needed.
 
@@ -26,6 +26,11 @@ defmodule Exrabbit.Producer do
       queue on the channel. If an empty string is passed, the name will be
       assigned by the broker.
 
+    * `:subscribe` - Subsribe the given process (identified by pid or
+      registered name) to receive messages from the queue. Allowed values:
+      `<pid or atom>` or a value returned from
+      `Exrabbit.Consumer.process(pid)`.
+
   """
   def new(chan, options) do
     exchange = Common.declare_exchange(chan, Keyword.get(options, :exchange, ""))
@@ -34,30 +39,15 @@ defmodule Exrabbit.Producer do
     binding_key = Keyword.get(options, :binding_key, nil)
     Common.bind_queue(chan, exchange, queue, binding_key)
 
-    routing_key = choose_routing_key(exchange, queue, binding_key)
-    %Producer{channel: chan, exchange: exchange, routing_key: routing_key}
-  end
-
-  def publish(%Producer{channel: chan, exchange: x, routing_key: key}, message, options \\ []) do
-    validate_publish_options(options)
-    new_options = Keyword.merge([exchange: x, routing_key: key], options)
-    Exrabbit.Channel.publish(chan, message, new_options)
-  end
-
-  ###
-
-  defp choose_routing_key(_exchange, queue, nil) do
-    queue
-  end
-
-  defp choose_routing_key(_exchange, _queue, binding_key) do
-    binding_key
-  end
-
-  defp validate_publish_options(options) do
-    case Enum.partition(options, fn {k, _} -> k in [:exchange, :routing_key] end) do
-      {good, []} -> good
-      {_, bad} -> raise "Bad options to publish(): #{inspect bad}"
+    consumer = %Consumer{channel: chan, queue: queue}
+    if pid=Keyword.get(options, :subscribe, false) do
+      subscribe(consumer, pid)
     end
+    consumer
+  end
+
+  def subscribe(consumer=%Consumer{channel: chan, queue: queue}, pid) do
+    Exrabbit.Channel.subscribe(chan, queue, pid)
+    consumer
   end
 end

@@ -8,7 +8,6 @@ defmodule ExrabbitTest do
 
   test "basic send receive" do
     alias Exrabbit.Connection, as: Conn
-    alias Exrabbit.Channel, as: Chan
     use Exrabbit.Defs
 
     msg_count = 3
@@ -31,8 +30,7 @@ defmodule ExrabbitTest do
 
     # receive
     recv_conn = %Conn{channel: recv_chan} = Conn.open()
-    Chan.declare_queue(recv_chan, queue)
-    Chan.subscribe(recv_chan, @test_queue_name, pid)
+    Exrabbit.Consumer.new(recv_chan, queue: queue, subscribe: pid)
 
     assert_receive {^pid, :amqp_started}
     refute_receive _
@@ -40,6 +38,51 @@ defmodule ExrabbitTest do
     # send
     conn = %Conn{channel: chan} = Conn.open()
     producer = Exrabbit.Producer.new(chan, queue: queue)
+    Enum.each(1..msg_count, fn _ ->
+      Exrabbit.Producer.publish(producer, @test_payload)
+    end)
+    :ok = Conn.close(conn)
+
+    Enum.each(1..msg_count, fn _ ->
+      assert_receive {^pid, :amqp_received, @test_payload}
+    end)
+    refute_receive _
+
+    :ok = Conn.close(recv_conn)
+  end
+
+  test "fanout exchange" do
+    alias Exrabbit.Connection, as: Conn
+    use Exrabbit.Defs
+
+    msg_count = 3
+
+    parent = self()
+    pid = spawn_link(fn ->
+      receive do
+        Exrabbit.Defs.basic_consume_ok() ->
+          send(parent, {self(), :amqp_started})
+      end
+      Enum.each(1..msg_count, fn _ ->
+        receive do
+          {Exrabbit.Defs.basic_deliver(), Exrabbit.Defs.amqp_msg(payload: body)} ->
+            send(parent, {self(), :amqp_received, body})
+        end
+      end)
+    end)
+
+    exchange = exchange_declare(exchange: "fanout_test", type: "fanout")
+
+    # receive
+    recv_conn = %Conn{channel: recv_chan} = Conn.open()
+    Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "", subscribe: pid)
+
+    assert_receive {^pid, :amqp_started}
+    refute_receive _
+
+    # send
+    conn = %Conn{channel: chan} = Conn.open()
+    producer = Exrabbit.Producer.new(chan, exchange: "fanout_test")
     Enum.each(1..msg_count, fn _ ->
       Exrabbit.Producer.publish(producer, @test_payload)
     end)

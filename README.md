@@ -168,27 +168,25 @@ and subscribes to the queue to be notified of incoming messages:
 conn = %Conn{channel: chan} = Conn.open(with_channel: true)
 
 topical_exchange = Exrabbit.Records.exchange_declare(exchange: "more_logs", type: "topic")
-queue = Exrabbit.Records.queue_declare(exclusive: true)
 
-# bind the queue to the exchange and subscribe to it in one go;
-# the :out argument enables different listening strategies
-Consumer.new(chan, exchange: topical_exchange, queue: queue, out: self())
+# bind the queue to the exchange and subscribe to it in one go
+Consumer.new(chan, exchange: topical_exchange, new_queue: queue, subsribe: self())
 
 receive do
   ... -> ...
 end
 
 
-# redirecting incoming messages to a stream
-stream = IO.binstream(:stdio, :line)
-Consumer.new(chan, exchange: topical_exchange, queue: queue, out: stream)
-
-
-# when :out is omitted, it is possible to subscribe later on or request
-# messages one by one
-consumer = Consumer.new(chan, exchange: topical_exchange, queue: queue)
-
-{:ok, message} = Consumer.get(consumer, no_ack: true)
+### # redirecting incoming messages to a stream
+### stream = IO.binstream(:stdio, :line)
+### Consumer.new(chan, exchange: topical_exchange, queue: queue, out: stream)
+###
+###
+### # when :out is omitted, it is possible to subscribe later on or request
+### # messages one by one
+### consumer = Consumer.new(chan, exchange: topical_exchange, queue: queue)
+###
+### {:ok, message} = Consumer.get(consumer, no_ack: true)
 
 
 Conn.close(conn)
