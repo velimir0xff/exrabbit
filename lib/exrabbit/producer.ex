@@ -2,6 +2,7 @@ defmodule Exrabbit.Producer do
   defstruct [channel: nil, exchange: "", routing_key: ""]
   alias __MODULE__
   alias Exrabbit.Common
+  use Exrabbit.Defs
 
   @doc """
   Create a new producer bound to a channel.
@@ -40,8 +41,32 @@ defmodule Exrabbit.Producer do
 
   def publish(%Producer{channel: chan, exchange: x, routing_key: key}, message, options \\ []) do
     validate_publish_options(options)
-    new_options = Keyword.merge([exchange: x, routing_key: key], options)
-    Exrabbit.Channel.publish(chan, message, new_options)
+    options = Keyword.merge([exchange: x, routing_key: key], options)
+
+    exchange = Keyword.get(options, :exchange, "")
+    routing_key = Keyword.get(options, :routing_key, "")
+    wait = Keyword.get(options, :await_confirm, false)
+    timeout = Keyword.get(options, :timeout, nil)
+    publish(chan, exchange, routing_key, message, wait, timeout)
+  end
+
+  defp publish(chan, exchange, routing_key, message, false, _) do
+    do_publish(chan, exchange, routing_key, message)
+  end
+
+  defp publish(chan, exchange, routing_key, message, true, timeout) do
+    :ok = do_publish(chan, exchange, routing_key, message)
+    if timeout do
+      Exrabbit.Channel.await_confirms(chan, timeout)
+    else
+      Exrabbit.Channel.await_confirms(chan)
+    end
+  end
+
+  defp do_publish(chan, exchange, routing_key, message) do
+    method = basic_publish(exchange: exchange, routing_key: routing_key)
+    msg = amqp_msg(payload: message)
+    :amqp_channel.call(chan, method, msg)
   end
 
   ###
@@ -55,7 +80,7 @@ defmodule Exrabbit.Producer do
   end
 
   defp validate_publish_options(options) do
-    case Enum.partition(options, fn {k, _} -> k in [:exchange, :routing_key] end) do
+    case Enum.partition(options, fn {k, _} -> k in [:exchange, :routing_key, :await_confirm, :timeout] end) do
       {good, []} -> good
       {_, bad} -> raise "Bad options to publish(): #{inspect bad}"
     end

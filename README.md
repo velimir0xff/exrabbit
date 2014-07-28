@@ -175,7 +175,7 @@ There is also a way to request messages one by one using the `get` function:
 
 consumer = Consumer.new(chan, exchange: topical_exchange, queue: queue)
 
-{:ok, message} = Consumer.get(consumer, no_ack: true)
+{:ok, message} = Consumer.get(consumer)
 ```
 
 

@@ -3,6 +3,10 @@ defmodule Exrabbit.Channel do
 
   alias Exrabbit.Connection, as: Conn
 
+  @confirm_timeout 15000
+
+  @type channel :: pid
+
   @doc """
   Open a new connection with default settings and create a new channel on it.
 
@@ -36,37 +40,37 @@ defmodule Exrabbit.Channel do
 
   def close(chan), do: :amqp_channel.close(chan)
 
+  @doc """
+  Switch the channel to confirmation or transactional mode.
+
+  Once set, the mode cannot be changed.
+  """
+  @spec set_mode(channel, :confirm | :tx) :: :ok
+
+  def set_mode(chan, :confirm) do
+    confirm_select_ok() = :amqp_channel.call(chan, confirm_select())
+    :ok
+  end
+
+  def set_mode(chan, :tx) do
+    tx_select_ok() = :amqp_channel.call(chan, tx_select())
+    :ok
+  end
+
+  def await_confirms(chan, timeout \\ @confirm_timeout) do
+    case :amqp_channel.wait_for_confirms(chan, timeout) do
+      :timeout -> {:error, :timeout}
+      false    -> {:error, :nack}
+      true     -> :ok
+    end
+  end
+
   def rpc(channel, exchange, routing_key, message, reply_to) do
     :amqp_channel.call channel, basic_publish(exchange: exchange, routing_key: routing_key), amqp_msg(props: pbasic(reply_to: reply_to), payload: message)
   end
 
   def rpc(channel, exchange, routing_key, message, reply_to, uuid) do
     :amqp_channel.call channel, basic_publish(exchange: exchange, routing_key: routing_key), amqp_msg(props: pbasic(reply_to: reply_to, headers: ({"uuid", :longstr, uuid})  ), payload: message)
-  end
-
-  def publish(chan, message, options) do
-    exchange = Keyword.get(options, :exchange, "")
-    routing_key = Keyword.get(options, :routing_key, "")
-    wait = Keyword.get(options, :wait_confirmation, false)
-    publish(chan, exchange, routing_key, message, wait)
-  end
-
-  defp publish(channel, exchange, routing_key, message, false) do
-    :amqp_channel.call channel, basic_publish(exchange: exchange, routing_key: routing_key), amqp_msg(payload: message)
-  end
-
-  defp publish(channel, exchange, routing_key, message, true) do
-    root = self
-    confirm_select_ok() = :amqp_channel.call channel, confirm_select()
-    :ok = :amqp_channel.register_confirm_handler channel, spawn fn ->
-      wait_confirmation(root, channel)
-    end
-    :ok = publish(channel, exchange, routing_key, message, false)
-    receive do
-      {:message_confirmed, _data} -> :ok
-      {:message_lost, _data} -> {:error, :lost}
-      {:confirmation_timeout} -> {:error, :timeout}
-    end
   end
 
   def ack(channel, tag) do
@@ -76,27 +80,8 @@ defmodule Exrabbit.Channel do
     :amqp_channel.call channel, basic_nack(delivery_tag: tag)
   end
 
-  def get(chan, queue, no_ack) do
-    case :amqp_channel.call(chan, basic_get(queue: queue, no_ack: no_ack)) do
-      basic_get_empty() -> nil
-      {basic_get_ok(), _content}=msg -> msg
-    end
-  end
-
   def set_qos(channel, prefetch_count \\ 1) do
     basic_qos_ok() = :amqp_channel.call channel, basic_qos(prefetch_count: prefetch_count)
     prefetch_count
-  end
-
-  defp wait_confirmation(root, channel) do
-    receive do
-      basic_ack(delivery_tag: tag) ->
-        send(root, {:message_confirmed, tag})
-      basic_nack(delivery_tag: tag) ->
-        send(root, {:message_lost, tag})
-      after 15000 ->
-        send(root, {:confirmation_timeout})
-    end
-    :amqp_channel.unregister_confirm_handler channel
   end
 end

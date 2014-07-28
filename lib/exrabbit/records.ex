@@ -36,6 +36,7 @@ defmodule Exrabbit.Defs do
 
   [
     :"queue.declare", :"queue.declare_ok", :"queue.bind", :"queue.bind_ok",
+    :"queue.purge", :"queue.purge_ok",
 
     :"basic.get", :"basic.get_ok", :"basic.get_empty", :"basic.ack",
     :"basic.consume", :"basic.consume_ok", :"basic.publish",
@@ -47,6 +48,8 @@ defmodule Exrabbit.Defs do
     :"basic.qos", :"basic.qos_ok", :"basic.nack",
 
     :"confirm.select", :"confirm.select_ok",
+
+    :"tx.select", :"tx.select_ok",
   ] |> extract_all("rabbit_common/include/rabbit_framing.hrl")
 
   import Exrabbit.Framing

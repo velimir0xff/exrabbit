@@ -38,10 +38,20 @@ defmodule Exrabbit.Connection do
     ))
 
     if Keyword.get(options, :with_channel, true) do
-      %Connection{connection: conn, channel: Exrabbit.Channel.open(conn)}
+      %Connection{connection: conn, channel: open_channel(conn, options)}
     else
       %Connection{connection: conn}
     end
+  end
+
+  defp open_channel(conn, options) do
+    chan = Exrabbit.Channel.open(conn)
+    case Keyword.fetch(options, :mode) do
+      {:ok, mode} when mode in [:confirm, :tx] ->
+        :ok = Exrabbit.Channel.set_mode(chan, mode)
+      :error -> nil
+    end
+    chan
   end
 
   @doc """

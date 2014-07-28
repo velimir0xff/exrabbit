@@ -96,9 +96,9 @@ defmodule Exrabbit.Consumer do
   def get(%Consumer{channel: chan, queue: queue}, options \\ []) do
     import Exrabbit.Defs
 
-    no_ack = Keyword.get(options, :no_ack, true)
+    ack = Keyword.get(options, :ack, false)
 
-    case Exrabbit.Channel.get(chan, queue, no_ack) do
+    case do_get(chan, queue, ack) do
       nil -> {:error, :empty_response}
       {basic_get_ok(), amqp_msg(payload: body)} ->
         {:ok, body}
@@ -108,21 +108,24 @@ defmodule Exrabbit.Consumer do
   def get_full(%Consumer{channel: chan, queue: queue}, options \\ []) do
     import Exrabbit.Defs
 
-    no_ack = Keyword.get(options, :no_ack, true)
+    ack = Keyword.get(options, :ack, false)
 
-    case Exrabbit.Channel.get(chan, queue, no_ack) do
+    case do_get(chan, queue, ack) do
       nil -> {:error, :empty_response}
       {basic_get_ok(delivery_tag: dtag, redelivered: rflag, exchange: exchange,
                     routing_key: key, message_count: cnt), amqp_msg()=payload} ->
         msg = %Exrabbit.Message{
-          delivery_tag: dtag,
-          redelivered: rflag,
-          exchange: exchange,
-          routing_key: key,
-          message_count: cnt,
-          message: payload,
+          delivery_tag: dtag, redelivered: rflag, exchange: exchange,
+          routing_key: key, message_count: cnt, message: payload,
         }
         {:ok, msg}
+    end
+  end
+
+  defp do_get(chan, queue, ack) do
+    case :amqp_channel.call(chan, basic_get(queue: queue, no_ack: not ack)) do
+      basic_get_empty() -> nil
+      {basic_get_ok(), _content}=msg -> msg
     end
   end
 
@@ -163,12 +166,8 @@ defmodule Exrabbit.Consumer do
       {basic_deliver(consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
                      exchange: exchange, routing_key: key), amqp_msg()=payload} ->
         msg = %Exrabbit.Message{
-          consumer_tag: ctag,
-          delivery_tag: dtag,
-          redelivered: rflag,
-          exchange: exchange,
-          routing_key: key,
-          message: payload,
+          consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
+          exchange: exchange, routing_key: key, message: payload,
         }
         fun.(msg)
         service_loop(fun)

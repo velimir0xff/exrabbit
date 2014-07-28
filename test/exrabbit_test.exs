@@ -224,6 +224,43 @@ defmodule ExrabbitTest do
   test "get with ack" do
   end
 
+  test "publish with confirm" do
+    alias Exrabbit.Connection, as: Conn
+    use Exrabbit.Defs
+
+    queue = queue_declare(queue: "confirm_test", auto_delete: true)
+
+    # receive
+    recv_conn = %Conn{channel: recv_chan} = Conn.open()
+    consumer = Exrabbit.Consumer.new(recv_chan, queue: queue)
+
+    # send
+    conn = %Conn{channel: chan} = Conn.open()
+    producer = Exrabbit.Producer.new(chan, queue: "confirm_test")
+    assert :not_in_confirm_mode = catch_throw(
+      Exrabbit.Producer.publish(producer, "hi", await_confirm: true, timeout: 100)
+    )
+    # the message could have been published or not; we don't know for sure
+    purge = queue_purge(queue: "confirm_test")
+    queue_purge_ok() = :amqp_channel.call(chan, purge)
+
+    Exrabbit.Channel.set_mode(chan, :confirm)
+    assert :ok = Exrabbit.Producer.publish(producer, "hi", await_confirm: true, timeout: 100)
+    assert :ok = Exrabbit.Producer.publish(producer, "1")
+    assert :ok = Exrabbit.Producer.publish(producer, "2")
+    assert :ok = Exrabbit.Producer.publish(producer, "3")
+    assert :ok = Exrabbit.Channel.await_confirms(chan, 100)
+
+    :ok = Conn.close(conn)
+
+    assert {:ok, "hi"} = Exrabbit.Consumer.get(consumer)
+    assert {:ok, "1"} = Exrabbit.Consumer.get(consumer)
+    assert {:ok, "2"} = Exrabbit.Consumer.get(consumer)
+    assert {:ok, "3"} = Exrabbit.Consumer.get(consumer)
+
+    :ok = Conn.close(recv_conn)
+  end
+
   #  test "low-level send receive" do
   #    alias Exrabbit.Channel, as: Chan
   #    use Exrabbit.Defs
