@@ -36,31 +36,6 @@ defmodule Exrabbit.Channel do
 
   def close(chan), do: :amqp_channel.close(chan)
 
-  ### Exchange related
-
-  def declare_exchange(chan, exchange) do
-    exchange_declare_ok() = :amqp_channel.call(chan, exchange)
-    exchange_declare(exchange, :exchange)
-  end
-
-  ### Queue related
-
-  @doc """
-  Declare an unnamed queue with `:auto_delete` set to `true`.
-  """
-  def declare_queue(chan) do
-    queue_declare_ok(queue: name) = :amqp_channel.call(chan, queue_declare(auto_delete: true))
-    name
-  end
-
-  @doc """
-  Declare a queue using the supplied record.
-  """
-  def declare_queue(chan, queue) do
-    queue_declare_ok(queue: name) = :amqp_channel.call(chan, queue)
-    name
-  end
-
   def rpc(channel, exchange, routing_key, message, reply_to) do
     :amqp_channel.call channel, basic_publish(exchange: exchange, routing_key: routing_key), amqp_msg(props: pbasic(reply_to: reply_to), payload: message)
   end
@@ -113,27 +88,6 @@ defmodule Exrabbit.Channel do
     prefetch_count
   end
 
-  def bind_queue(channel, queue, exchange, key \\ "") do
-    queue_bind_ok() = :amqp_channel.call channel, queue_bind(queue: queue, exchange: exchange, routing_key: key)
-  end
-
-  def subscribe(channel, opts = %{queue: queue, noack: noack}) do
-    sub = basic_consume(queue: queue, no_ack: noack)
-    basic_consume_ok(consumer_tag: consumer_tag) = :amqp_channel.subscribe channel, sub, self
-    consumer_tag
-  end
-  def subscribe(channel, queue), do: subscribe(channel, queue, self)
-
-  def subscribe(channel, queue, pid) do
-    sub = basic_consume(queue: queue)
-    basic_consume_ok(consumer_tag: consumer_tag) = :amqp_channel.subscribe channel, sub, pid
-    consumer_tag
-  end
-
-  def unsubscribe(channel, consumer_tag) do
-    :amqp_channel.call channel, basic_cancel(consumer_tag: consumer_tag)
-  end
-
   defp wait_confirmation(root, channel) do
     receive do
       basic_ack(delivery_tag: tag) ->
@@ -145,6 +99,4 @@ defmodule Exrabbit.Channel do
     end
     :amqp_channel.unregister_confirm_handler channel
   end
-
-  defp get_payload(amqp_msg(payload: payload)), do: payload
 end

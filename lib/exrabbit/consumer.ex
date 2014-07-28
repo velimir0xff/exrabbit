@@ -67,8 +67,15 @@ defmodule Exrabbit.Consumer do
       fun when is_function(fun, 1) ->
         spawn_service_proc(fun, simple_messages)
     end
-    tag = Exrabbit.Channel.subscribe(chan, queue, pid)
+    tag = do_subscribe(chan, queue, pid)
     %Consumer{consumer | tag: tag, pid: pid}
+  end
+
+  defp do_subscribe(chan, queue, pid) do
+    method = basic_consume(queue: queue)
+    basic_consume_ok(consumer_tag: consumer_tag) =
+      :amqp_channel.subscribe(chan, method, pid)
+    consumer_tag
   end
 
   @doc """
