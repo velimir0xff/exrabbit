@@ -73,13 +73,13 @@ Producer.publish(producer, "bye-bye")
 Conn.close(conn)
 ```
 
-One can also feed a stream of binaries as input to a queue:
+One can also feed a stream of binaries into a producer:
 
 ```elixir
 # Create a producer on the chan
 stream = IO.binstream(:stdio, :line)
 producer = Producer.new(chan, queue: "hello_queue")
-Producer.publish(producer, stream)
+Enum.into(producer, stream)
 ```
 
 To adjust properties of a queue, one can use a record for the queue:
@@ -149,8 +149,8 @@ Producer.publish(topical, "crashed", routing_key: "logs.error")
 Conn.close(conn)
 ```
 
-Side note: you don't have to use producers. Messages can be published in a more
-canonical way using `Chan.publish`:
+Side note: messages can be published in a more canonical way using
+`Chan.publish`. However, you are encouraged to use `Exrabbit.Producer`.
 
 ```elixir
 conn = %Conn{channel: chan} = Conn.open(with_channel: true)

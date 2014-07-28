@@ -61,3 +61,17 @@ defmodule Exrabbit.Producer do
     end
   end
 end
+
+defimpl Collectable, for: Exrabbit.Producer do
+  def into(producer) do
+    {nil, fn
+      _, {:cont, bin} -> Exrabbit.Producer.publish(producer, bin)
+      _, :done -> producer
+      _, :halt -> nil
+    end}
+  end
+
+  def empty(_) do
+    raise "empty() is not supported by Exrabbit.Producer"
+  end
+end

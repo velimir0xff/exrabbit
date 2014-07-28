@@ -86,9 +86,8 @@ defmodule Exrabbit.Consumer do
 
   Returns a new `Consumer` struct.
   """
-  def unsubscribe(consumer=%Consumer{channel: chan, tag: tag, pid: pid}) do
+  def unsubscribe(consumer=%Consumer{channel: chan, tag: tag}) do
     basic_cancel_ok() = :amqp_channel.call(chan, basic_cancel(consumer_tag: tag))
-    send_unsubscribe_message(pid)
     %Consumer{consumer | tag: nil, pid: nil}
   end
 
@@ -122,21 +121,17 @@ defmodule Exrabbit.Consumer do
     spawn_link(fn -> service_loop(fun) end)
   end
 
-  defp send_unsubscribe_message(pid) do
-    send(pid, :finita)
-  end
-
   defp service_loop(fun) do
     receive do
       Exrabbit.Defs.basic_consume_ok() ->
         fun.(:start)
         service_loop(fun)
+      Exrabbit.Defs.basic_cancel_ok() ->
+        fun.(:end)
+        :ok
       {Exrabbit.Defs.basic_deliver(), Exrabbit.Defs.amqp_msg(payload: body)} ->
         fun.({:msg, body})
         service_loop(fun)
-      :finita ->
-        fun.(:end)
-        :ok
     end
   end
 end

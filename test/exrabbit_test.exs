@@ -44,6 +44,7 @@ defmodule ExrabbitTest do
     Exrabbit.Consumer.unsubscribe(consumer)
     assert_receive {^pid, :amqp_finished}
     refute_receive _
+    refute Process.alive?(pid)
 
     :ok = Conn.close(recv_conn)
   end
@@ -89,6 +90,46 @@ defmodule ExrabbitTest do
       assert_receive {^pid, :amqp_received, @test_payload}
     end)
     refute_receive _
+
+    :ok = Conn.close(recv_conn)
+  end
+
+  test "fanout exchange stream" do
+    alias Exrabbit.Connection, as: Conn
+    use Exrabbit.Defs
+
+    parent = self()
+    subfun = fn
+      :start -> send(parent, {self(), :amqp_started})
+      :end -> send(parent, {self(), :amqp_finished})
+      {:msg, message} -> send(parent, {self(), :amqp_received, message})
+    end
+
+    exchange = exchange_declare(exchange: "fanout_stream_test", type: "fanout")
+
+    # receive
+    recv_conn = %Conn{channel: recv_chan} = Conn.open()
+    consumer = %Exrabbit.Consumer{pid: pid} =
+      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "", subscribe: subfun)
+
+    assert_receive {^pid, :amqp_started}
+    refute_receive _
+
+    # send
+    conn = %Conn{channel: chan} = Conn.open()
+    producer = Exrabbit.Producer.new(chan, exchange: "fanout_stream_test")
+    Enum.into(["hello", "it's", "me"], producer)
+    :ok = Conn.close(conn)
+
+    assert_receive {^pid, :amqp_received, "hello"}
+    assert_receive {^pid, :amqp_received, "it's"}
+    assert_receive {^pid, :amqp_received, "me"}
+    refute_receive _
+
+    Exrabbit.Consumer.unsubscribe(consumer)
+    assert_receive {^pid, :amqp_finished}
+    refute_receive _
+    refute Process.alive?(pid)
 
     :ok = Conn.close(recv_conn)
   end
