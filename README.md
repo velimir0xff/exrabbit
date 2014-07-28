@@ -95,33 +95,11 @@ Producer.publish(producer, "message")
 
 ### Aside: working with records
 
-__Temporary section, please disregard__
-
 In order to provide all of functionality implemented by the Erlang client,
 Exrabbit relies on Erlang records that represent AMQP methods. A single method
 is an instance of a record and it is normally executed on a channel.
 
-Exrabbit allows you to execute one or more methods with a single function call:
-
-```elixir
-exchange = Exrabbit.Records.exchange_declare(exchange: "logs", type: "fanout")
-queue = Exrabbit.Records.queue_declare(queue: "q", exclusive: true)
-bind = Exrabbit.Records.queue_bind(queue: "q", exchange: "logs")
-publish = {
-  Exrabbit.Records.basic_publish(exchange: "logs"),
-  Exrabbit.Records.amqp_msg(payload: "hello")
-}
-Chan.exec(chan, [exchange, queue, bind, publish])
-
-# high-level equivalent of the above code
-exchange = Exrabbit.Records.exchange_declare(exchange: "logs", type: "fanout")
-queue = Exrabbit.Records.queue_declare(queue: "q", exclusive: true)
-producer = Producer.new(chan, exchange: exchange, queue: queue)
-Producer.publish(producer, "hello")
-```
-
-Normally, the high-level API provides a more succinct way to express common
-patterns.
+**TODO**: more content
 
 ### Publishing to an exchange
 
@@ -169,31 +147,36 @@ conn = %Conn{channel: chan} = Conn.open(with_channel: true)
 
 topical_exchange = Exrabbit.Records.exchange_declare(exchange: "more_logs", type: "topic")
 
-# bind the queue to the exchange and subscribe to it in one go
-Consumer.new(chan, exchange: topical_exchange, new_queue: queue, subsribe: self())
-
-receive do
-  ... -> ...
+# using a function for subscribtion let's use interact with the simple consumer
+# API (as opposed to the complete one)
+subscription_fun = fn
+  {:begin, _tag} -> IO.puts "Did subscribe"
+  {:end, _tag} -> IO.puts "Subscription ended"
+  {:msg, _tag, message} -> IO.puts "Received message from queue: #{message}"
 end
 
+# bind the queue to the exchange and subscribe to it
+consumer =
+  Consumer.new(chan, exchange: topical_exchange, new_queue: "")
+  |> Consumer.subscribe(subscription_fun)
 
-### # redirecting incoming messages to a stream
-### stream = IO.binstream(:stdio, :line)
-### Consumer.new(chan, exchange: topical_exchange, queue: queue, out: stream)
-###
-###
-### # when :out is omitted, it is possible to subscribe later on or request
-### # messages one by one
-### consumer = Consumer.new(chan, exchange: topical_exchange, queue: queue)
-###
-### {:ok, message} = Consumer.get(consumer, no_ack: true)
+# arriving messages will be consumed by subscription_fun
+# ...
 
+Consumer.unsubscribe(consumer)
 
 Conn.close(conn)
 ```
 
+There is also a way to request messages one by one using the `get` function:
 
+```elixir
+# assume we have set up the channel as before
 
+consumer = Consumer.new(chan, exchange: topical_exchange, queue: queue)
+
+{:ok, message} = Consumer.get(consumer, no_ack: true)
+```
 
 
 ## OLD README ##

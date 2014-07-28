@@ -101,19 +101,10 @@ defmodule Exrabbit.Channel do
     :amqp_channel.call channel, basic_nack(delivery_tag: tag)
   end
 
-  def get_messages_ack(channel, queue), do: get_messages(channel, queue, false)
-  def get_messages(channel, queue), do: get_messages(channel, queue, true)
-  def get_messages(channel, queue, true) do
-    case :amqp_channel.call channel, basic_get(queue: queue, no_ack: true) do
-      {basic_get_ok(), content} -> get_payload(content)
+  def get(chan, queue, no_ack) do
+    case :amqp_channel.call(chan, basic_get(queue: queue, no_ack: no_ack)) do
       basic_get_empty() -> nil
-    end
-  end
-
-  def get_messages(channel, queue, false) do
-    case :amqp_channel.call channel, basic_get(queue: queue, no_ack: false) do
-      {basic_get_ok(delivery_tag: tag), content} -> [tag: tag, content: get_payload(content)]
-      basic_get_empty() -> nil
+      {basic_get_ok(), _content}=msg -> msg
     end
   end
 

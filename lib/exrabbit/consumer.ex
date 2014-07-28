@@ -1,3 +1,15 @@
+defmodule Exrabbit.Message do
+  defstruct [
+    consumer_tag: nil,
+    delivery_tag: nil,
+    redelivered: false,
+    exchange: "",
+    routing_key: "",
+    message_count: nil,
+    message: nil,
+  ]
+end
+
 defmodule Exrabbit.Consumer do
   use Exrabbit.Defs
 
@@ -28,21 +40,6 @@ defmodule Exrabbit.Consumer do
       queue on the channel. If an empty string is passed, the name will be
       assigned by the broker.
 
-    * `:subscribe` - Subsribe a process (identified by pid or registered name)
-      or a function to receive messages from the queue.
-
-    * `:into` - Feed incoming messages into the given process, stream, or
-      function as they arrive.
-
-  ## Subscription semantics
-
-  When supplying the `:subscribe` option or calling `Consumer.subscribe/2`, the
-  target process will begin receiving messages from the queue.
-
-  Supplying the `:into` option or calling `Consumer.consume/2` will block the
-  calling process until the message queue is deleted or the connection is
-  closed.
-
   """
   def new(chan, options) do
     exchange = Common.declare_exchange(chan, Keyword.get(options, :exchange, ""))
@@ -51,15 +48,7 @@ defmodule Exrabbit.Consumer do
     binding_key = Keyword.get(options, :binding_key, nil)
     Common.bind_queue(chan, exchange, queue, binding_key)
 
-    consumer = %Consumer{channel: chan, queue: queue}
-    validate_subscribe_options(options)
-    cond do
-      pid=Keyword.get(options, :subscribe, false) ->
-        subscribe(consumer, pid)
-      sink=Keyword.get(options, :into, nil) ->
-        consume(consumer, sink)
-      true -> consumer
-    end
+    %Consumer{channel: chan, queue: queue}
   end
 
   @doc """
@@ -71,11 +60,12 @@ defmodule Exrabbit.Consumer do
   If the function is passed, a service process will be spawned inside of which
   it will be invoked.
   """
-  def subscribe(consumer=%Consumer{channel: chan, queue: queue}, target) do
+  def subscribe(consumer=%Consumer{channel: chan, queue: queue}, target, options \\ []) do
+    simple_messages = Keyword.get(options, :simple, true)
     pid = case target do
       pid when is_pid(pid) -> pid
       fun when is_function(fun, 1) ->
-        spawn_service_proc(fun)
+        spawn_service_proc(fun, simple_messages)
     end
     tag = Exrabbit.Channel.subscribe(chan, queue, pid)
     %Consumer{consumer | tag: tag, pid: pid}
@@ -91,47 +81,93 @@ defmodule Exrabbit.Consumer do
     %Consumer{consumer | tag: nil, pid: nil}
   end
 
-  def consume(consumer, into: pid) when is_pid(pid) do
-    IO.puts "FLUSHING MESSAGES INTO #{inspect pid}"
-    :ok
-  end
+  @doc """
+  Blocks the current process until a new message arrives.
 
-  def consume(consumer, into: fun) when is_function(fun, 1) do
-    IO.puts "FLUSHING MESSAGES INTO #{inspect fun}"
-    :ok
-  end
+  Returns `{:ok, <message>}` or `{:error, <reason>}`.
+  """
+  def get(%Consumer{channel: chan, queue: queue}, options \\ []) do
+    import Exrabbit.Defs
 
-  def consume(consumer, into: stream) do
-    if nil?(Collectable.impl_for(stream)) do
-      raise "Expected a stream in consume(). Got #{inspect stream}"
+    no_ack = Keyword.get(options, :no_ack, true)
+
+    case Exrabbit.Channel.get(chan, queue, no_ack) do
+      nil -> {:error, :empty_response}
+      {basic_get_ok(), amqp_msg(payload: body)} ->
+        {:ok, body}
     end
-    IO.puts "FLUSHING MESSAGES INTO #{inspect stream}"
-    :ok
+  end
+
+  def get_full(%Consumer{channel: chan, queue: queue}, options \\ []) do
+    import Exrabbit.Defs
+
+    no_ack = Keyword.get(options, :no_ack, true)
+
+    case Exrabbit.Channel.get(chan, queue, no_ack) do
+      nil -> {:error, :empty_response}
+      {basic_get_ok(delivery_tag: dtag, redelivered: rflag, exchange: exchange,
+                    routing_key: key, message_count: cnt), amqp_msg()=payload} ->
+        msg = %Exrabbit.Message{
+          delivery_tag: dtag,
+          redelivered: rflag,
+          exchange: exchange,
+          routing_key: key,
+          message_count: cnt,
+          message: payload,
+        }
+        {:ok, msg}
+    end
   end
 
   ###
 
-  defp validate_subscribe_options(options) do
-    if options[:subscribe] && options[:into] do
-      raise "Only one of :subscribe or :into can be used at once"
-    end
+  defp spawn_service_proc(fun, true) do
+    spawn_link(fn -> service_loop_simple(fun) end)
   end
 
-  defp spawn_service_proc(fun) do
+  defp spawn_service_proc(fun, false) do
     spawn_link(fn -> service_loop(fun) end)
   end
 
-  defp service_loop(fun) do
+  defp service_loop_simple(fun) do
+    import Exrabbit.Defs
     receive do
-      Exrabbit.Defs.basic_consume_ok() ->
-        fun.(:start)
-        service_loop(fun)
-      Exrabbit.Defs.basic_cancel_ok() ->
-        fun.(:end)
+      basic_consume_ok(consumer_tag: tag) ->
+        fun.({:begin, tag})
+        service_loop_simple(fun)
+      basic_cancel_ok(consumer_tag: tag) ->
+        fun.({:end, tag})
         :ok
-      {Exrabbit.Defs.basic_deliver(), Exrabbit.Defs.amqp_msg(payload: body)} ->
-        fun.({:msg, body})
+      {basic_deliver(consumer_tag: tag), amqp_msg(payload: body)} ->
+        fun.({:msg, tag, body})
+        service_loop_simple(fun)
+    end
+  end
+
+  defp service_loop(fun) do
+    import Exrabbit.Defs
+    receive do
+      basic_consume_ok()=x ->
+        fun.(x)
         service_loop(fun)
+      basic_cancel_ok()=x ->
+        fun.(x)
+        :ok
+      {basic_deliver(consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
+                     exchange: exchange, routing_key: key), amqp_msg()=payload} ->
+        msg = %Exrabbit.Message{
+          consumer_tag: ctag,
+          delivery_tag: dtag,
+          redelivered: rflag,
+          exchange: exchange,
+          routing_key: key,
+          message: payload,
+        }
+        fun.(msg)
+        service_loop(fun)
+
+      other ->
+        raise "Unexpected message #{inspect other}"
     end
   end
 end

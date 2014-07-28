@@ -14,16 +14,17 @@ defmodule ExrabbitTest do
 
     parent = self()
     subfun = fn
-      :start -> send(parent, {self(), :amqp_started})
-      :end -> send(parent, {self(), :amqp_finished})
-      {:msg, message} -> send(parent, {self(), :amqp_received, message})
+      {:begin, _} -> send(parent, {self(), :amqp_started})
+      {:end, _} -> send(parent, {self(), :amqp_finished})
+      {:msg, _, message} -> send(parent, {self(), :amqp_received, message})
     end
     queue = queue_declare(queue: @test_queue_name, auto_delete: true)
 
     # receive
     recv_conn = %Conn{channel: recv_chan} = Conn.open()
     consumer = %Exrabbit.Consumer{pid: pid} =
-      Exrabbit.Consumer.new(recv_chan, queue: queue, subscribe: subfun)
+      Exrabbit.Consumer.new(recv_chan, queue: queue)
+      |> Exrabbit.Consumer.subscribe(subfun)
 
     assert_receive {^pid, :amqp_started}
     refute_receive _
@@ -73,7 +74,8 @@ defmodule ExrabbitTest do
 
     # receive
     recv_conn = %Conn{channel: recv_chan} = Conn.open()
-    Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "", subscribe: pid)
+    Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "")
+    |> Exrabbit.Consumer.subscribe(pid)
 
     assert_receive {^pid, :amqp_started}
     refute_receive _
@@ -100,9 +102,9 @@ defmodule ExrabbitTest do
 
     parent = self()
     subfun = fn
-      :start -> send(parent, {self(), :amqp_started})
-      :end -> send(parent, {self(), :amqp_finished})
-      {:msg, message} -> send(parent, {self(), :amqp_received, message})
+      {:begin, _} -> send(parent, {self(), :amqp_started})
+      {:end, _} -> send(parent, {self(), :amqp_finished})
+      {:msg, _, message} -> send(parent, {self(), :amqp_received, message})
     end
 
     exchange = exchange_declare(exchange: "fanout_stream_test", type: "fanout")
@@ -110,7 +112,8 @@ defmodule ExrabbitTest do
     # receive
     recv_conn = %Conn{channel: recv_chan} = Conn.open()
     consumer = %Exrabbit.Consumer{pid: pid} =
-      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "", subscribe: subfun)
+      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "")
+      |> Exrabbit.Consumer.subscribe(subfun)
 
     assert_receive {^pid, :amqp_started}
     refute_receive _
@@ -132,6 +135,93 @@ defmodule ExrabbitTest do
     refute Process.alive?(pid)
 
     :ok = Conn.close(recv_conn)
+  end
+
+  test "multiple subscribers per process" do
+    alias Exrabbit.Connection, as: Conn
+    use Exrabbit.Defs
+
+    parent = self()
+    subfun = fn
+      {:begin, tag} -> send(parent, {self(), :amqp_started, tag})
+      {:end, tag} -> send(parent, {self(), :amqp_finished, tag})
+      {:msg, tag, message} -> send(parent, {self(), :amqp_received, tag, message})
+    end
+
+    exchange = exchange_declare(exchange: "fanout_stream_test", type: "fanout")
+
+    # receive
+    recv_conn = %Conn{channel: recv_chan} = Conn.open()
+    consumer1 = %Exrabbit.Consumer{pid: pid1, tag: tag1} =
+      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "")
+      |> Exrabbit.Consumer.subscribe(subfun)
+
+    consumer2 = %Exrabbit.Consumer{pid: pid2, tag: tag2} =
+      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "")
+      |> Exrabbit.Consumer.subscribe(subfun)
+
+    assert_receive {^pid1, :amqp_started, ^tag1}
+    assert_receive {^pid2, :amqp_started, ^tag2}
+    refute_receive _
+
+    # send
+    conn = %Conn{channel: chan} = Conn.open()
+    producer = Exrabbit.Producer.new(chan, exchange: "fanout_stream_test")
+    Enum.into(["hello", "it's", "me"], producer)
+    :ok = Conn.close(conn)
+
+    Enum.each([{pid1, tag1}, {pid2, tag2}], fn {pid, tag} ->
+      assert_receive {^pid, :amqp_received, ^tag, "hello"}
+      assert_receive {^pid, :amqp_received, ^tag, "it's"}
+      assert_receive {^pid, :amqp_received, ^tag, "me"}
+    end)
+    refute_receive _
+
+    Exrabbit.Consumer.unsubscribe(consumer1)
+    assert_receive {^pid1, :amqp_finished, ^tag1}
+    refute_receive _
+    Exrabbit.Consumer.unsubscribe(consumer2)
+    assert_receive {^pid2, :amqp_finished, ^tag2}
+    refute_receive _
+
+    :ok = Conn.close(recv_conn)
+  end
+
+  test "get message" do
+    alias Exrabbit.Connection, as: Conn
+    use Exrabbit.Defs
+
+    exchange = exchange_declare(exchange: "direct_test", type: "direct")
+
+    # receive
+    recv_conn = %Conn{channel: recv_chan} = Conn.open()
+    consumer_black =
+      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "", binding_key: "black")
+    consumer_red =
+      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "", binding_key: "red")
+
+    # send
+    conn = %Conn{channel: chan} = Conn.open()
+    producer = Exrabbit.Producer.new(chan, exchange: "direct_test")
+    Exrabbit.Producer.publish(producer, "night", routing_key: "black")
+    Exrabbit.Producer.publish(producer, "sun", routing_key: "red")
+    Exrabbit.Producer.publish(producer, "ash", routing_key: "black")
+    :ok = Conn.close(conn)
+
+    assert {:ok, "night"} = Exrabbit.Consumer.get(consumer_black)
+    assert {:ok, "sun"} = Exrabbit.Consumer.get(consumer_red)
+    assert {:error, :empty_response} = Exrabbit.Consumer.get(consumer_red)
+
+    assert {:ok, %Exrabbit.Message{
+        exchange: "direct_test",
+        routing_key: "black",
+        message: amqp_msg(payload: "ash")}
+    } = Exrabbit.Consumer.get_full(consumer_black)
+
+    :ok = Conn.close(recv_conn)
+  end
+
+  test "get with ack" do
   end
 
   #  test "low-level send receive" do
