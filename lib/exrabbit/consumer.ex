@@ -96,9 +96,9 @@ defmodule Exrabbit.Consumer do
   def get(%Consumer{channel: chan, queue: queue}, options \\ []) do
     import Exrabbit.Defs
 
-    ack = Keyword.get(options, :ack, false)
+    no_ack = Keyword.get(options, :no_ack, true)
 
-    case do_get(chan, queue, ack) do
+    case do_get(chan, queue, no_ack) do
       nil -> {:error, :empty_response}
       {basic_get_ok(), amqp_msg(payload: body)} ->
         {:ok, body}
@@ -108,9 +108,9 @@ defmodule Exrabbit.Consumer do
   def get_full(%Consumer{channel: chan, queue: queue}, options \\ []) do
     import Exrabbit.Defs
 
-    ack = Keyword.get(options, :ack, false)
+    no_ack = Keyword.get(options, :no_ack, true)
 
-    case do_get(chan, queue, ack) do
+    case do_get(chan, queue, no_ack) do
       nil -> {:error, :empty_response}
       {basic_get_ok(delivery_tag: dtag, redelivered: rflag, exchange: exchange,
                     routing_key: key, message_count: cnt), amqp_msg()=payload} ->
@@ -122,8 +122,8 @@ defmodule Exrabbit.Consumer do
     end
   end
 
-  defp do_get(chan, queue, ack) do
-    case :amqp_channel.call(chan, basic_get(queue: queue, no_ack: not ack)) do
+  defp do_get(chan, queue, no_ack) do
+    case :amqp_channel.call(chan, basic_get(queue: queue, no_ack: no_ack)) do
       basic_get_empty() -> nil
       {basic_get_ok(), _content}=msg -> msg
     end

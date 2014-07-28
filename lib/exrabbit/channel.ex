@@ -57,6 +57,27 @@ defmodule Exrabbit.Channel do
     :ok
   end
 
+  def set_qos(chan, basic_qos()=qos) do
+    basic_qos_ok() = :amqp_channel.call(chan, qos)
+    :ok
+  end
+
+  def ack(chan, basic_ack()=method) do
+    :amqp_channel.call(chan, method)
+  end
+
+  def ack(chan, tag) do
+    :amqp_channel.call(chan, basic_ack(delivery_tag: tag))
+  end
+
+  def nack(chan, basic_nack()=method) do
+    :amqp_channel.call(chan, method)
+  end
+
+  def nack(chan, tag) do
+    :amqp_channel.call(chan, basic_nack(delivery_tag: tag))
+  end
+
   def await_confirms(chan, timeout \\ @confirm_timeout) do
     case :amqp_channel.wait_for_confirms(chan, timeout) do
       :timeout -> {:error, :timeout}
@@ -73,15 +94,4 @@ defmodule Exrabbit.Channel do
     :amqp_channel.call channel, basic_publish(exchange: exchange, routing_key: routing_key), amqp_msg(props: pbasic(reply_to: reply_to, headers: ({"uuid", :longstr, uuid})  ), payload: message)
   end
 
-  def ack(channel, tag) do
-    :amqp_channel.call channel, basic_ack(delivery_tag: tag)
-  end
-  def nack(channel, tag) do
-    :amqp_channel.call channel, basic_nack(delivery_tag: tag)
-  end
-
-  def set_qos(channel, prefetch_count \\ 1) do
-    basic_qos_ok() = :amqp_channel.call channel, basic_qos(prefetch_count: prefetch_count)
-    prefetch_count
-  end
 end

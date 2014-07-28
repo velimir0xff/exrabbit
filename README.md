@@ -97,7 +97,7 @@ Producer.publish(producer, "message")
 
 In order to provide all of functionality implemented by the Erlang client,
 Exrabbit relies on Erlang records that represent AMQP methods. A single method
-is an instance of a record and it is normally executed on a channel.
+is an instance of a record and it is executed on a channel.
 
 **TODO**: more content
 
@@ -127,28 +127,16 @@ Producer.publish(topical, "crashed", routing_key: "logs.error")
 Conn.close(conn)
 ```
 
-Side note: messages can be published in a more canonical way using
-`Chan.publish`. However, you are encouraged to use `Exrabbit.Producer`.
-
-```elixir
-conn = %Conn{channel: chan} = Conn.open(with_channel: true)
-
-exchange = Exrabbit.Records.exchange_declare(exchange: "more_logs", type: "topic")
-Chan.publish(chan, "message", exchange: exchange, routing_key: "logs.info")
-```
-
 ### Receiving messages
 
 When receiving messages, the client sets up a queue, binds it to an exchange
 and subscribes to the queue to be notified of incoming messages:
 
 ```elixir
-conn = %Conn{channel: chan} = Conn.open(with_channel: true)
+conn = %Conn{channel: chan} = Conn.open()
 
 topical_exchange = Exrabbit.Records.exchange_declare(exchange: "more_logs", type: "topic")
 
-# using a function for subscribtion let's use interact with the simple consumer
-# API (as opposed to the complete one)
 subscription_fun = fn
   {:begin, _tag} -> IO.puts "Did subscribe"
   {:end, _tag} -> IO.puts "Subscription ended"
@@ -174,8 +162,38 @@ There is also a way to request messages one by one using the `get` function:
 # assume we have set up the channel as before
 
 consumer = Consumer.new(chan, exchange: topical_exchange, queue: queue)
-
 {:ok, message} = Consumer.get(consumer)
+{:error, :empty_response} = Consumer.get(consumer)
+```
+
+### Producer confirms and transactions
+
+An open channel can be switched to confirm-mode or tx-mode.
+
+In confirm mode each published message will be ack'ed or nack'ed by the broker.
+
+In tx-mode one has to call `Exrabbit.Producer.commit` after sending a batch of
+messages. Those messages will be delivered atomically: either all or nothing.
+
+### Consumer acknowledgements
+
+When receiving messages, consumers may specify whether the broker should wait
+for acknowledgement before removing a message from the queue.
+
+```elixir
+subscription_fun = fn
+  {:msg, tag, message} ->
+    IO.inspect message
+    Exrabbit.Channel.ack(chan, tag)
+  _ -> nil
+end
+
+# specify that we will acknowledge received messages
+method = basic_consume(no_ack: false)
+
+consumer =
+  Consumer.new(chan, exchange: exchange, queue: queue)
+  |> Consumer.subscribe(subscription_fun, method: method)
 ```
 
 
