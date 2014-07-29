@@ -51,15 +51,11 @@ config :exrabbit,
 ```
 
 
-## Usage (DSL)
-
-
-## Usage (basic)
+## Preliminaries
 
 In all examples below we will assume the following aliases have been defined:
 
 ```elixir
-alias Exrabbit.Connection, as: Conn
 alias Exrabbit.Producer
 alias Exrabbit.Consumer
 
@@ -77,43 +73,109 @@ channel.
 See `doc/records.md` for an overview of which records have been inherited from
 the Erlang client and which ones have been superceded by a higher level API.
 
+
+## Usage (DSL)
+
+It is often desirable for the consumer to be a GenServer. For this reason
+Exrabbit provides a DSL that simplifies the task of building one.
+
+First, we set up a producer with a fanout exchange.
+
+```elixir
+exchange = exchange_declare(exchange: "test_fanout_x", type: "fanout")
+producer = Producer.new(exchange: exchange)
+```
+
+Next, we need a consumer module.
+
+```elixir
+defmodule TestConsumer do
+  # specify the name of our exchange and create a new exclusive queue
+  use Exrabbit.Consumer.DSL, exchange: "test_fanout_x", new_queue: ""
+
+  alias Exrabbit.Message
+
+  require Lager
+
+  def init(state) do
+    {:ok, state}
+  end
+
+  on nil do
+    nil -> Lager.info "Got nil message"
+  end
+
+  on %Message{delivery_tag: tag, message: body}, state do
+    Lager.info "Got message with tag #{tag} and payload #{body}"
+    ack(tag)
+    {:noreply, state}
+  end
+end
+```
+
+After spawning a consumer process (either manually or with the help of a
+supervisor) we can start publishing messages and receiving them on the consumer
+end.
+
+```elixir
+import Supervisor.Spec, warn: false
+
+# Create multiple workers, customizing the behaviour of each one by passing
+# different arguments.
+children = [
+  worker(TestConsumer, []),
+  worker(TestConsumer, []),
+  worker(TestConsumer, []),
+]
+
+opts = [strategy: :one_for_one, name: Exrabbit.Supervisor]
+Supervisor.start_link(children, opts)
+
+# Back on the producer end.
+Producer.publish(producer, "[info] just a log message")
+Producer.publish(producer, "[info] it's being broadcasted")
+Producer.publish(producer, "[error] something unxpected happened")
+
+# Once we're done with the producer, we can shut it down.
+# The consumers can be shut down via Supervisor.terminate_child.
+Producer.shutdown(producer)
+```
+
+## Usage (basic)
+
 ### Publishing to a queue
 
 A basic example of a publisher:
 
 ```elixir
-# Open both a connection to the broker and a channel in one go
-conn = %Conn{channel: chan} = Conn.open(with_channel: true)
-
-# Create a producer on the chan
-# producer is just a struct encapsulating the exchange (default one in this case)
-# and the queue
-producer = Producer.new(chan, queue: "hello_queue")
+# Open a connection and a channel, then create a producer on the channel.
+# Producer is just a struct encapsulating the connection, the exchange (default
+# one in this case) and the queue.
+producer = Producer.new(queue: "hello_queue")
 Producer.publish(producer, "message")
 Producer.publish(producer, "bye-bye")
 
-# Close the channel and connection in one go
-Conn.close(conn)
+# Close the channel and connection in one go.
+Producer.shutdown(producer)
 ```
 
 One can also feed a stream of binaries into a producer:
 
 ```elixir
-# Create a producer on the chan
-stream = IO.binstream(:stdio, :line)
-producer = Producer.new(chan, queue: "hello_queue")
-Enum.into(producer, stream)
+Producer.new(queue: "hello_queue")
+Enum.into(IO.binstream(:stdio, :line), producer)
+Producer.shutdown(producer)
 ```
 
 To adjust properties of a queue, one can use a record for the queue:
 
 ```elixir
-conn = %Conn{channel: chan} = Conn.open(with_channel: true)
-
-# we are using a record provided by the Erlang client here
+# We are using a record provided by the Erlang client here.
 queue = Exrabbit.Records.queue_declare(queue: "name", auto_delete: true, exclusive: false)
-producer = Producer.new(chan, queue: queue)
+
+producer = Producer.new(queue: queue)
 Producer.publish(producer, "message")
+Producer.shutdown(producer)
 ```
 
 ### Publishing to an exchange
@@ -122,24 +184,27 @@ Most of the time you'll be working with exchanges because they provide a more
 flexible way to route messages to different queues and eventually consumers.
 
 ```elixir
-# :with_channel is true by default
-conn = %Conn{channel: chan} = Conn.open()
+alias Exrabbit.Connection
 
-# again, using a record from the Erlang client
+# To have more than one producer operate on the same channel, we can open it
+# upfront.
+conn = %Connection{chan: chan} = Connection.open()
+
+# Again, using a record from the Erlang client.
 exchange = Exrabbit.Records.exchange_declare(exchange: "logs", type: "fanout")
-fanout = Producer.new(chan, exchange: exchange)
+fanout = Producer.new(chan: chan, exchange: exchange)
 
 Producer.publish(fanout, "[info] some log")
 Producer.publish(fanout, "[error] crashed")
 
 
 exchange = Exrabbit.Records.exchange_declare(exchange: "more_logs", type: "topic")
-topical = Producer.new(chan, exchange: exchange)
+topical = Producer.new(chan: chan, exchange: exchange)
 
 Producer.publish(topical, "some log", routing_key: "logs.info")
 Producer.publish(topical, "crashed", routing_key: "logs.error")
 
-Conn.close(conn)
+Connection.close(conn)
 ```
 
 ### Receiving messages
@@ -148,8 +213,6 @@ When receiving messages, the client sets up a queue, binds it to an exchange
 and subscribes to the queue to be notified of incoming messages:
 
 ```elixir
-conn = %Conn{channel: chan} = Conn.open()
-
 topical_exchange = Exrabbit.Records.exchange_declare(exchange: "more_logs", type: "topic")
 
 subscription_fun = fn
@@ -158,27 +221,25 @@ subscription_fun = fn
   {:msg, _tag, message} -> IO.puts "Received message from queue: #{message}"
 end
 
-# bind the queue to the exchange and subscribe to it
+# Bind a new exclusive queue to the exchange and subscribe to it.
 consumer =
-  Consumer.new(chan, exchange: topical_exchange, new_queue: "")
+  Consumer.new(exchange: topical_exchange, new_queue: "")
   |> Consumer.subscribe(subscription_fun)
 
-# arriving messages will be consumed by subscription_fun
+# Arriving messages will be consumed by subscription_fun.
 # ...
 
 Consumer.unsubscribe(consumer)
-
-Conn.close(conn)
+Consumer.shutdown(consumer)
 ```
 
 There is also a way to request messages one by one using the `get` function:
 
 ```elixir
-# assume we have set up the channel as before
-
-consumer = Consumer.new(chan, exchange: topical_exchange, queue: queue)
+consumer = Consumer.new(exchange: topical_exchange, queue: queue)
 {:ok, message} = Consumer.get(consumer)
 nil = Consumer.get(consumer)
+Consumer.shutdown(consumer)
 ```
 
 ### Producer confirms and transactions
