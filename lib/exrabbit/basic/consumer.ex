@@ -1,14 +1,15 @@
 defmodule Exrabbit.Consumer do
-  use Exrabbit.Records
-
-  defstruct [channel: nil, queue: "", pid: nil, tag: nil]
+  defstruct [conn: nil, chan: nil, queue: "", pid: nil, tag: nil]
   alias __MODULE__
   alias Exrabbit.Common
+  alias Exrabbit.Connection
+  alias Exrabbit.Message
+  use Exrabbit.Records
 
   @doc """
   Create a new consumer bounds to a channel.
 
-  Returns a new `Consumer` struct.
+  Opens a connection, sets up a channel on it and returns a `Consumer` struct.
 
   This function declares the exchange and the queue when needed.
 
@@ -16,6 +17,11 @@ defmodule Exrabbit.Consumer do
   queue will be bound to the exchange.
 
   ## Options
+
+    * `:chan` - instead of creating a new channel, use the supplied one
+
+    * `:conn_opts` - when no channel is supplied, a new connection will be
+      opened; this option allows overriding default connection options
 
     * `:exchange` - An `exchange_declare` record (in which case it'll be
       declared on the channel) or the name of an existing exchange (with `""`
@@ -29,14 +35,23 @@ defmodule Exrabbit.Consumer do
       assigned by the broker.
 
   """
-  def new(chan, options) do
+  def new(options) do
+    %Connection{conn: conn, chan: chan} = Common.connection(options)
+
     exchange = Common.declare_exchange(chan, Keyword.get(options, :exchange, ""))
     queue = Common.declare_queue(chan, Keyword.get(options, :queue, nil), Keyword.get(options, :new_queue, nil))
 
     binding_key = Keyword.get(options, :binding_key, nil)
     Common.bind_queue(chan, exchange, queue, binding_key)
 
-    %Consumer{channel: chan, queue: queue}
+    %Consumer{conn: conn, chan: chan, queue: queue}
+  end
+
+  @doc """
+  Close the connection initiated by the consumer.
+  """
+  def shutdown(%Consumer{conn: conn, chan: chan}) do
+    Connection.close(%Connection{conn: conn, chan: chan})
   end
 
   @doc """
@@ -48,7 +63,7 @@ defmodule Exrabbit.Consumer do
   If the function is passed, a service process will be spawned inside of which
   it will be invoked.
   """
-  def subscribe(consumer=%Consumer{channel: chan, queue: queue}, target, options \\ []) do
+  def subscribe(consumer=%Consumer{chan: chan, queue: queue}, target, options \\ []) do
     simple_messages = Keyword.get(options, :simple, true)
     pid = case target do
       pid when is_pid(pid) -> pid
@@ -71,7 +86,7 @@ defmodule Exrabbit.Consumer do
 
   Returns a new `Consumer` struct.
   """
-  def unsubscribe(consumer=%Consumer{channel: chan, tag: tag}) do
+  def unsubscribe(consumer=%Consumer{chan: chan, tag: tag}) do
     basic_cancel_ok() = :amqp_channel.call(chan, basic_cancel(consumer_tag: tag))
     %Consumer{consumer | tag: nil, pid: nil}
   end
@@ -81,14 +96,14 @@ defmodule Exrabbit.Consumer do
 
   Returns `{:ok, <message>}` or `{:error, <reason>}`.
   """
-  def get_body(%Consumer{channel: chan, queue: queue}) do
+  def get_body(%Consumer{chan: chan, queue: queue}) do
     case do_get(chan, queue, true) do
       nil -> nil
       {basic_get_ok(), amqp_msg(payload: body)} -> {:ok, body}
     end
   end
 
-  def get(%Consumer{channel: chan, queue: queue}, options \\ []) do
+  def get(%Consumer{chan: chan, queue: queue}, options \\ []) do
     no_ack = Keyword.get(options, :no_ack, true)
 
     case do_get(chan, queue, no_ack) do
@@ -96,7 +111,7 @@ defmodule Exrabbit.Consumer do
       {basic_get_ok(delivery_tag: dtag, redelivered: rflag, exchange: exchange,
                     routing_key: key, message_count: cnt),
                     amqp_msg(props: props, payload: body)} ->
-        msg = %Exrabbit.Message{
+        msg = %Message{
           delivery_tag: dtag, redelivered: rflag, exchange: exchange,
           routing_key: key, message_count: cnt, message: body, props: props,
         }
@@ -109,6 +124,18 @@ defmodule Exrabbit.Consumer do
       basic_get_empty() -> nil
       {basic_get_ok(), _content}=msg -> msg
     end
+  end
+
+  def ack(%Consumer{chan: chan}, %Message{delivery_tag: tag}, opts \\ []) do
+    Exrabbit.Channel.ack(chan, tag, opts)
+  end
+
+  def nack(%Consumer{chan: chan}, %Message{delivery_tag: tag}, opts \\ []) do
+    Exrabbit.Channel.nack(chan, tag, opts)
+  end
+
+  def reject(%Consumer{chan: chan}, %Message{delivery_tag: tag}, opts \\ []) do
+    Exrabbit.Channel.reject(chan, tag, opts)
   end
 
   ###
@@ -146,7 +173,7 @@ defmodule Exrabbit.Consumer do
       {basic_deliver(consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
                      exchange: exchange, routing_key: key),
                      amqp_msg(props: props, payload: body)} ->
-        msg = %Exrabbit.Message{
+        msg = %Message{
           consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
           exchange: exchange, routing_key: key, message: body, props: props,
         }

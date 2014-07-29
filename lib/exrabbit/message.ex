@@ -11,18 +11,5 @@ defmodule Exrabbit.Message do
     message: "",
     props: pbasic(),
   ]
-  alias __MODULE__
-
-  def ack(%Message{delivery_tag: tag}, chan, opts \\ []) do
-    Exrabbit.Channel.ack(chan, tag, opts)
-  end
-
-  def nack(%Message{delivery_tag: tag}, chan, opts \\ []) do
-    Exrabbit.Channel.nack(chan, tag, opts)
-  end
-
-  def reject(%Message{delivery_tag: tag}, chan, opts \\ []) do
-    Exrabbit.Channel.reject(chan, tag, opts)
-  end
 end
 

@@ -1,13 +1,14 @@
 defmodule Exrabbit.Producer do
-  defstruct [channel: nil, exchange: "", routing_key: ""]
+  defstruct [conn: nil, chan: nil, exchange: "", routing_key: ""]
   alias __MODULE__
   alias Exrabbit.Common
+  alias Exrabbit.Connection
   use Exrabbit.Records
 
   @doc """
   Create a new producer bound to a channel.
 
-  Returns a `Producer` struct.
+  Opens a connection, sets up a channel on it and returns a `Producer` struct.
 
   This function declares the exchange and the queue when needed.
 
@@ -15,6 +16,11 @@ defmodule Exrabbit.Producer do
   queue will be bound to the exchange.
 
   ## Options
+
+    * `:chan` - instead of creating a new channel, use the supplied one
+
+    * `:conn_opts` - when no channel is supplied, a new connection will be
+      opened; this option allows overriding default connection options
 
     * `:exchange` - An `exchange_declare` record (in which case it'll be
       declared on the channel) or the name of an existing exchange (with `""`
@@ -28,7 +34,9 @@ defmodule Exrabbit.Producer do
       assigned by the broker.
 
   """
-  def new(chan, options) do
+  def new(options) do
+    %Connection{conn: conn, chan: chan} = Common.connection(options)
+
     exchange = Common.declare_exchange(chan, Keyword.get(options, :exchange, ""))
     queue = Common.declare_queue(chan, Keyword.get(options, :queue, nil), Keyword.get(options, :new_queue, nil))
 
@@ -36,10 +44,25 @@ defmodule Exrabbit.Producer do
     Common.bind_queue(chan, exchange, queue, binding_key)
 
     routing_key = choose_routing_key(exchange, queue, binding_key)
-    %Producer{channel: chan, exchange: exchange, routing_key: routing_key}
+    %Producer{conn: conn, chan: chan, exchange: exchange, routing_key: routing_key}
   end
 
-  def publish(%Producer{channel: chan, exchange: x, routing_key: key}, message, options \\ []) do
+  @doc """
+  Close the connection initiated by the producer.
+  """
+  def shutdown(%Producer{conn: conn, chan: chan}) do
+    Connection.close(%Connection{conn: conn, chan: chan})
+  end
+
+  def set_mode(%Producer{chan: chan}, mode) do
+    Exrabbit.Channel.set_mode(chan, mode)
+  end
+
+  def await_confirms(%Producer{chan: chan}, timeout) do
+    Exrabbit.Channel.await_confirms(chan, timeout)
+  end
+
+  def publish(%Producer{chan: chan, exchange: x, routing_key: key}, message, options \\ []) do
     validate_publish_options(options)
     options = Keyword.merge([exchange: x, routing_key: key], options)
 

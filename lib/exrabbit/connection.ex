@@ -1,7 +1,7 @@
 defmodule Exrabbit.Connection do
   use Exrabbit.Records
 
-  defstruct [connection: nil, channel: nil]
+  defstruct [conn: nil, chan: nil]
   alias __MODULE__
 
   @doc """
@@ -16,7 +16,7 @@ defmodule Exrabbit.Connection do
     * `host: <string>` - broker host
     * `virtual_host: <string>` - the name of the virtual host in the broker
     * `heartbeat: <int>` - heartbeat interval in seconds (default: 1)
-    * `with_channel: <bool>` - when `true`, also opens a channel and puts it
+    * `with_chan: <bool>` - when `true`, also opens a channel and puts it
       into the returned struct
 
   """
@@ -37,10 +37,10 @@ defmodule Exrabbit.Connection do
       heartbeat: conn_settings[:heartbeat]
     ))
 
-    if Keyword.get(options, :with_channel, true) do
-      %Connection{connection: conn, channel: open_channel(conn, options)}
+    if Keyword.get(options, :with_chan, true) do
+      %Connection{conn: conn, chan: open_channel(conn, options)}
     else
-      %Connection{connection: conn}
+      %Connection{conn: conn}
     end
   end
 
@@ -57,7 +57,7 @@ defmodule Exrabbit.Connection do
   @doc """
   Close previously established connection.
   """
-  def close(%Connection{connection: conn, channel: chan}) do
+  def close(%Connection{conn: conn, chan: chan}) do
     if chan do
       :ok = Exrabbit.Channel.close(chan)
     end

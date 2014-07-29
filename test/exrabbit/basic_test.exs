@@ -16,9 +16,8 @@ defmodule ExrabbitTest.BasicTest do
     queue = queue_declare(queue: @test_queue_name, auto_delete: true)
 
     # receive
-    conn = %Conn{channel: chan} = Conn.open()
     consumer = %Consumer{pid: pid} =
-      Consumer.new(chan, queue: queue)
+      Consumer.new(queue: queue)
       |> Consumer.subscribe(subfun(self()))
 
     assert_receive {^pid, :amqp_started, _}
@@ -37,7 +36,7 @@ defmodule ExrabbitTest.BasicTest do
     refute_receive _
     refute Process.alive?(pid)
 
-    :ok = Conn.close(conn)
+    :ok = Consumer.shutdown(consumer)
   end
 
   test "fanout exchange" do
@@ -60,9 +59,9 @@ defmodule ExrabbitTest.BasicTest do
     exchange = exchange_declare(exchange: "fanout_test", type: "fanout")
 
     # receive
-    conn = %Conn{channel: chan} = Conn.open()
-    Consumer.new(chan, exchange: exchange, new_queue: "")
-    |> Consumer.subscribe(pid)
+    consumer =
+      Consumer.new(exchange: exchange, new_queue: "")
+      |> Consumer.subscribe(pid)
 
     assert_receive {^pid, :amqp_started}
     refute_receive _
@@ -74,16 +73,15 @@ defmodule ExrabbitTest.BasicTest do
     end)
     refute_receive _
 
-    :ok = Conn.close(conn)
+    :ok = Consumer.shutdown(consumer)
   end
 
   test "fanout exchange stream" do
     exchange = exchange_declare(exchange: "fanout_stream_test", type: "fanout")
 
     # receive
-    conn = %Conn{channel: chan} = Conn.open()
     consumer = %Consumer{pid: pid} =
-      Consumer.new(chan, exchange: exchange, new_queue: "")
+      Consumer.new(exchange: exchange, new_queue: "")
       |> Consumer.subscribe(subfun(self()))
 
     assert_receive {^pid, :amqp_started, _}
@@ -103,20 +101,20 @@ defmodule ExrabbitTest.BasicTest do
     refute_receive _
     refute Process.alive?(pid)
 
-    :ok = Conn.close(conn)
+    :ok = Consumer.shutdown(consumer)
   end
 
   test "multiple subscribers per process" do
     exchange = exchange_declare(exchange: "fanout_stream_test", type: "fanout")
 
     # receive
-    conn = %Conn{channel: chan} = Conn.open()
+    conn = %Conn{chan: chan} = Conn.open()
     consumer1 = %Consumer{pid: pid1, tag: tag1} =
-      Consumer.new(chan, exchange: exchange, new_queue: "")
+      Consumer.new(chan: chan, exchange: exchange, new_queue: "")
       |> Consumer.subscribe(subfun(self()))
 
     consumer2 = %Consumer{pid: pid2, tag: tag2} =
-      Consumer.new(chan, exchange: exchange, new_queue: "")
+      Consumer.new(chan: chan, exchange: exchange, new_queue: "")
       |> Consumer.subscribe(subfun(self()))
 
     assert_receive {^pid1, :amqp_started, ^tag1}
@@ -148,11 +146,11 @@ defmodule ExrabbitTest.BasicTest do
     exchange = exchange_declare(exchange: "direct_test", type: "direct")
 
     # receive
-    conn = %Conn{channel: chan} = Conn.open()
+    conn = %Conn{chan: chan} = Conn.open()
     consumer_black =
-      Consumer.new(chan, exchange: exchange, new_queue: "", binding_key: "black")
+      Consumer.new(chan: chan, exchange: exchange, new_queue: "", binding_key: "black")
     consumer_red =
-      Consumer.new(chan, exchange: exchange, new_queue: "", binding_key: "red")
+      Consumer.new(chan: chan, exchange: exchange, new_queue: "", binding_key: "red")
 
     produce([exchange: "direct_test"], fn producer ->
       Producer.publish(producer, "night", routing_key: "black")
@@ -174,69 +172,54 @@ defmodule ExrabbitTest.BasicTest do
   end
 
   test "get with ack" do
-    exchange = exchange_declare(exchange: "direct_test", type: "direct")
+    queue = queue_declare(queue: "test_ack_queue", auto_delete: true)
 
     # receive
-    conn = %Conn{channel: chan} = Conn.open()
-    consumer_black =
-      Consumer.new(chan, exchange: exchange, new_queue: "", binding_key: "black")
-    consumer_red =
-      Consumer.new(chan, exchange: exchange, new_queue: "", binding_key: "red")
+    consumer = Consumer.new(queue: queue)
 
-    produce([exchange: "direct_test"], fn producer ->
-      Producer.publish(producer, "night", routing_key: "black")
-      Producer.publish(producer, "sun", routing_key: "red")
-      Producer.publish(producer, "ash", routing_key: "black")
-    end)
+    produce([queue: queue], ["night", "ash"])
 
-    assert {:ok, "night"} = Consumer.get_body(consumer_black)
-    assert {:ok, "sun"} = Consumer.get_body(consumer_red)
-    assert nil = Consumer.get_body(consumer_red)
+    assert {:ok, "night"} = Consumer.get_body(consumer)
 
     assert {:ok, %Message{
-        exchange: "direct_test",
-        routing_key: "black",
+        routing_key: "test_ack_queue",
         message: "ash"}=msg
-    } = Consumer.get(consumer_black, no_ack: false)
-    assert nil = Consumer.get(consumer_black)
-    assert :ok = Message.nack(msg, chan)
+    } = Consumer.get(consumer, no_ack: false)
+    assert nil = Consumer.get(consumer)
+    assert :ok = Consumer.nack(consumer, msg)
 
     assert {:ok, %Message{
-        exchange: "direct_test",
-        routing_key: "black",
+        routing_key: "test_ack_queue",
         message: "ash"}=msg
-    } = Consumer.get(consumer_black, no_ack: false)
-    assert :ok = Message.ack(msg, chan)
-    assert nil = Consumer.get(consumer_black)
+    } = Consumer.get(consumer, no_ack: false)
+    assert :ok = Consumer.ack(consumer, msg)
+    assert nil = Consumer.get(consumer)
 
-    :ok = Conn.close(conn)
+    :ok = Consumer.shutdown(consumer)
   end
 
   test "publish with confirm" do
     queue = queue_declare(queue: "confirm_test", auto_delete: true)
 
     # receive
-    recv_conn = %Conn{channel: recv_chan} = Conn.open()
-    consumer = Consumer.new(recv_chan, queue: queue)
+    consumer = Consumer.new(queue: queue)
 
     # send
-    conn = %Conn{channel: chan} = Conn.open()
-    producer = Producer.new(chan, queue: "confirm_test")
+    producer = %Producer{chan: pchan} = Producer.new(queue: "confirm_test")
     assert :not_in_confirm_mode = catch_throw(
       Producer.publish(producer, "hi", await_confirm: true, timeout: 100)
     )
     # the message could have been published or not; we don't know for sure
-    purge = queue_purge(queue: "confirm_test")
-    queue_purge_ok() = :amqp_channel.call(chan, purge)
+    assert Exrabbit.Channel.queue_purge(pchan, "confirm_test") in [0, 1]
 
-    Exrabbit.Channel.set_mode(chan, :confirm)
+    Exrabbit.Channel.set_mode(pchan, :confirm)
     assert :ok = Producer.publish(producer, "hi", await_confirm: true, timeout: 100)
     assert :ok = Producer.publish(producer, "1")
     assert :ok = Producer.publish(producer, "2")
     assert :ok = Producer.publish(producer, "3")
-    assert :ok = Exrabbit.Channel.await_confirms(chan, 100)
+    assert :ok = Exrabbit.Channel.await_confirms(pchan, 100)
 
-    :ok = Conn.close(conn)
+    :ok = Producer.shutdown(producer)
     # end send
 
     assert {:ok, "hi"} = Consumer.get_body(consumer)
@@ -244,7 +227,7 @@ defmodule ExrabbitTest.BasicTest do
     assert {:ok, "2"} = Consumer.get_body(consumer)
     assert {:ok, "3"} = Consumer.get_body(consumer)
 
-    :ok = Conn.close(recv_conn)
+    :ok = Consumer.shutdown(consumer)
   end
 
   ###
@@ -275,12 +258,9 @@ defmodule ExrabbitTest.BasicTest do
       {nil, name} -> {:new_queue, name}
       {queue, nil} -> {:queue, queue}
     end
-
-    # send
-    conn = %Conn{channel: chan} = Conn.open()
-    producer = Producer.new(chan, [{:exchange, exchange}, queue])
+    producer = Producer.new([{:exchange, exchange}, queue])
     fun.(producer)
-    :ok = Conn.close(conn)
+    :ok = Producer.shutdown(producer)
   end
 
   #  test "low-level send receive" do

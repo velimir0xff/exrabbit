@@ -2,6 +2,14 @@ defmodule Exrabbit.Common do
   @moduledoc false
 
   use Exrabbit.Records
+  alias Exrabbit.Connection
+
+  def connection(options) do
+    case Keyword.fetch(options, :chan) do
+      {:ok, chan} -> %Connection{chan: chan}
+      :error -> Connection.open(Keyword.get(options, :conn_opts, []))
+    end
+  end
 
   def declare_exchange(chan, exchange_declare(exchange: name)=x) do
     exchange_declare_ok() = :amqp_channel.call(chan, x)
