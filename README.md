@@ -30,10 +30,25 @@ def deps do
 end
 ```
 
-Configure it using `config.exs` (see the bundled one for the available
-settings) or YAML (via [Sweetconfig][2]).
+
+## Configuration
+
+Exrabbit can be configured using `config.exs` (see the bundled one for the
+available settings) or YAML (via [Sweetconfig][2]).
 
   [2]: https://github.com/inbetgames/sweetconfig
+
+Example `config.exs`:
+
+```elixir
+use Mix.Config
+
+config :exrabbit,
+    host: "localhost",
+    username: "guest",
+    password: "guest",
+    confirm_timeout: 5000
+```
 
 
 ## Usage (DSL)
@@ -99,7 +114,8 @@ In order to provide all of functionality implemented by the Erlang client,
 Exrabbit relies on Erlang records that represent AMQP methods. A single method
 is an instance of a record and it is executed on a channel.
 
-**TODO**: more content
+See `doc/records.md` for an overview of which records have been inherited from
+the Erlang client and which ones are replaced by a higher level API.
 
 ### Publishing to an exchange
 
@@ -175,26 +191,14 @@ In confirm mode each published message will be ack'ed or nack'ed by the broker.
 In tx-mode one has to call `Exrabbit.Producer.commit` after sending a batch of
 messages. Those messages will be delivered atomically: either all or nothing.
 
+See `doc/producer_basic.md` for examples.
+
 ### Consumer acknowledgements
 
 When receiving messages, consumers may specify whether the broker should wait
 for acknowledgement before removing a message from the queue.
 
-```elixir
-subscription_fun = fn
-  {:msg, tag, message} ->
-    IO.inspect message
-    Exrabbit.Channel.ack(chan, tag)
-  _ -> nil
-end
-
-# specify that we will acknowledge received messages
-method = basic_consume(no_ack: false)
-
-consumer =
-  Consumer.new(chan, exchange: exchange, queue: queue)
-  |> Consumer.subscribe(subscription_fun, method: method)
-```
+See `doc/consumer_basic.md` for examples.
 
 
 ## OLD README ##
