@@ -1,4 +1,4 @@
-defmodule ExrabbitTest do
+defmodule ExrabbitTest.BasicTest do
   use ExUnit.Case
 
   # You need to have a RabbitMQ server running on localhost
