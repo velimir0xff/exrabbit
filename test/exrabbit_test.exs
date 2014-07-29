@@ -6,44 +6,34 @@ defmodule ExrabbitTest do
   @test_queue_name "exrabbit_test"
   @test_payload "Hello тест ありがとう＾ー＾"
 
+  alias Exrabbit.Connection, as: Conn
+  alias Exrabbit.Producer
+  alias Exrabbit.Consumer
+  alias Exrabbit.Message
+  use Exrabbit.Defs
+
   test "basic send receive" do
-    alias Exrabbit.Connection, as: Conn
-    use Exrabbit.Defs
-
-    msg_count = 3
-
-    parent = self()
-    subfun = fn
-      {:begin, _} -> send(parent, {self(), :amqp_started})
-      {:end, _} -> send(parent, {self(), :amqp_finished})
-      {:msg, _, message} -> send(parent, {self(), :amqp_received, message})
-    end
     queue = queue_declare(queue: @test_queue_name, auto_delete: true)
 
     # receive
     recv_conn = %Conn{channel: recv_chan} = Conn.open()
-    consumer = %Exrabbit.Consumer{pid: pid} =
-      Exrabbit.Consumer.new(recv_chan, queue: queue)
-      |> Exrabbit.Consumer.subscribe(subfun)
+    consumer = %Consumer{pid: pid} =
+      Consumer.new(recv_chan, queue: queue)
+      |> Consumer.subscribe(subfun(self()))
 
-    assert_receive {^pid, :amqp_started}
+    assert_receive {^pid, :amqp_started, _}
     refute_receive _
 
-    # send
-    conn = %Conn{channel: chan} = Conn.open()
-    producer = Exrabbit.Producer.new(chan, queue: queue)
-    Enum.each(1..msg_count, fn _ ->
-      Exrabbit.Producer.publish(producer, @test_payload)
-    end)
-    :ok = Conn.close(conn)
+    msg_count = 3
+    produce([queue: queue], Enum.map(1..msg_count, fn _ -> @test_payload end))
 
     Enum.each(1..msg_count, fn _ ->
-      assert_receive {^pid, :amqp_received, @test_payload}
+      assert_receive {^pid, :amqp_received, _, @test_payload}
     end)
     refute_receive _
 
-    Exrabbit.Consumer.unsubscribe(consumer)
-    assert_receive {^pid, :amqp_finished}
+    Consumer.unsubscribe(consumer)
+    assert_receive {^pid, :amqp_finished, _}
     refute_receive _
     refute Process.alive?(pid)
 
@@ -51,20 +41,17 @@ defmodule ExrabbitTest do
   end
 
   test "fanout exchange" do
-    alias Exrabbit.Connection, as: Conn
-    use Exrabbit.Defs
-
-    msg_count = 3
+    msg_count = 4
 
     parent = self()
     pid = spawn_link(fn ->
       receive do
-        Exrabbit.Defs.basic_consume_ok() ->
+        basic_consume_ok() ->
           send(parent, {self(), :amqp_started})
       end
       Enum.each(1..msg_count, fn _ ->
         receive do
-          {Exrabbit.Defs.basic_deliver(), Exrabbit.Defs.amqp_msg(payload: body)} ->
+          {basic_deliver(), amqp_msg(payload: body)} ->
             send(parent, {self(), :amqp_received, body})
         end
       end)
@@ -74,19 +61,13 @@ defmodule ExrabbitTest do
 
     # receive
     recv_conn = %Conn{channel: recv_chan} = Conn.open()
-    Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "")
-    |> Exrabbit.Consumer.subscribe(pid)
+    Consumer.new(recv_chan, exchange: exchange, new_queue: "")
+    |> Consumer.subscribe(pid)
 
     assert_receive {^pid, :amqp_started}
     refute_receive _
 
-    # send
-    conn = %Conn{channel: chan} = Conn.open()
-    producer = Exrabbit.Producer.new(chan, exchange: "fanout_test")
-    Enum.each(1..msg_count, fn _ ->
-      Exrabbit.Producer.publish(producer, @test_payload)
-    end)
-    :ok = Conn.close(conn)
+    produce([exchange: "fanout_test"], Enum.map(1..msg_count, fn _ -> @test_payload end))
 
     Enum.each(1..msg_count, fn _ ->
       assert_receive {^pid, :amqp_received, @test_payload}
@@ -97,40 +78,28 @@ defmodule ExrabbitTest do
   end
 
   test "fanout exchange stream" do
-    alias Exrabbit.Connection, as: Conn
-    use Exrabbit.Defs
-
-    parent = self()
-    subfun = fn
-      {:begin, _} -> send(parent, {self(), :amqp_started})
-      {:end, _} -> send(parent, {self(), :amqp_finished})
-      {:msg, _, message} -> send(parent, {self(), :amqp_received, message})
-    end
-
     exchange = exchange_declare(exchange: "fanout_stream_test", type: "fanout")
 
     # receive
     recv_conn = %Conn{channel: recv_chan} = Conn.open()
-    consumer = %Exrabbit.Consumer{pid: pid} =
-      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "")
-      |> Exrabbit.Consumer.subscribe(subfun)
+    consumer = %Consumer{pid: pid} =
+      Consumer.new(recv_chan, exchange: exchange, new_queue: "")
+      |> Consumer.subscribe(subfun(self()))
 
-    assert_receive {^pid, :amqp_started}
+    assert_receive {^pid, :amqp_started, _}
     refute_receive _
 
-    # send
-    conn = %Conn{channel: chan} = Conn.open()
-    producer = Exrabbit.Producer.new(chan, exchange: "fanout_stream_test")
-    Enum.into(["hello", "it's", "me"], producer)
-    :ok = Conn.close(conn)
+    produce([exchange: "fanout_stream_test"], fn producer ->
+      Enum.into(["hello", "it's", "me"], producer)
+    end)
 
-    assert_receive {^pid, :amqp_received, "hello"}
-    assert_receive {^pid, :amqp_received, "it's"}
-    assert_receive {^pid, :amqp_received, "me"}
+    assert_receive {^pid, :amqp_received, _, "hello"}
+    assert_receive {^pid, :amqp_received, _, "it's"}
+    assert_receive {^pid, :amqp_received, _, "me"}
     refute_receive _
 
-    Exrabbit.Consumer.unsubscribe(consumer)
-    assert_receive {^pid, :amqp_finished}
+    Consumer.unsubscribe(consumer)
+    assert_receive {^pid, :amqp_finished, _}
     refute_receive _
     refute Process.alive?(pid)
 
@@ -138,37 +107,25 @@ defmodule ExrabbitTest do
   end
 
   test "multiple subscribers per process" do
-    alias Exrabbit.Connection, as: Conn
-    use Exrabbit.Defs
-
-    parent = self()
-    subfun = fn
-      {:begin, tag} -> send(parent, {self(), :amqp_started, tag})
-      {:end, tag} -> send(parent, {self(), :amqp_finished, tag})
-      {:msg, tag, message} -> send(parent, {self(), :amqp_received, tag, message})
-    end
-
     exchange = exchange_declare(exchange: "fanout_stream_test", type: "fanout")
 
     # receive
     recv_conn = %Conn{channel: recv_chan} = Conn.open()
-    consumer1 = %Exrabbit.Consumer{pid: pid1, tag: tag1} =
-      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "")
-      |> Exrabbit.Consumer.subscribe(subfun)
+    consumer1 = %Consumer{pid: pid1, tag: tag1} =
+      Consumer.new(recv_chan, exchange: exchange, new_queue: "")
+      |> Consumer.subscribe(subfun(self()))
 
-    consumer2 = %Exrabbit.Consumer{pid: pid2, tag: tag2} =
-      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "")
-      |> Exrabbit.Consumer.subscribe(subfun)
+    consumer2 = %Consumer{pid: pid2, tag: tag2} =
+      Consumer.new(recv_chan, exchange: exchange, new_queue: "")
+      |> Consumer.subscribe(subfun(self()))
 
     assert_receive {^pid1, :amqp_started, ^tag1}
     assert_receive {^pid2, :amqp_started, ^tag2}
     refute_receive _
 
-    # send
-    conn = %Conn{channel: chan} = Conn.open()
-    producer = Exrabbit.Producer.new(chan, exchange: "fanout_stream_test")
-    Enum.into(["hello", "it's", "me"], producer)
-    :ok = Conn.close(conn)
+    produce([exchange: "fanout_stream_test"], fn producer ->
+      Enum.into(["hello", "it's", "me"], producer)
+    end)
 
     Enum.each([{pid1, tag1}, {pid2, tag2}], fn {pid, tag} ->
       assert_receive {^pid, :amqp_received, ^tag, "hello"}
@@ -177,10 +134,10 @@ defmodule ExrabbitTest do
     end)
     refute_receive _
 
-    Exrabbit.Consumer.unsubscribe(consumer1)
+    Consumer.unsubscribe(consumer1)
     assert_receive {^pid1, :amqp_finished, ^tag1}
     refute_receive _
-    Exrabbit.Consumer.unsubscribe(consumer2)
+    Consumer.unsubscribe(consumer2)
     assert_receive {^pid2, :amqp_finished, ^tag2}
     refute_receive _
 
@@ -188,35 +145,30 @@ defmodule ExrabbitTest do
   end
 
   test "get message" do
-    alias Exrabbit.Connection, as: Conn
-    use Exrabbit.Defs
-
     exchange = exchange_declare(exchange: "direct_test", type: "direct")
 
     # receive
     recv_conn = %Conn{channel: recv_chan} = Conn.open()
     consumer_black =
-      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "", binding_key: "black")
+      Consumer.new(recv_chan, exchange: exchange, new_queue: "", binding_key: "black")
     consumer_red =
-      Exrabbit.Consumer.new(recv_chan, exchange: exchange, new_queue: "", binding_key: "red")
+      Consumer.new(recv_chan, exchange: exchange, new_queue: "", binding_key: "red")
 
-    # send
-    conn = %Conn{channel: chan} = Conn.open()
-    producer = Exrabbit.Producer.new(chan, exchange: "direct_test")
-    Exrabbit.Producer.publish(producer, "night", routing_key: "black")
-    Exrabbit.Producer.publish(producer, "sun", routing_key: "red")
-    Exrabbit.Producer.publish(producer, "ash", routing_key: "black")
-    :ok = Conn.close(conn)
+    produce([exchange: "direct_test"], fn producer ->
+      Producer.publish(producer, "night", routing_key: "black")
+      Producer.publish(producer, "sun", routing_key: "red")
+      Producer.publish(producer, "ash", routing_key: "black")
+    end)
 
-    assert {:ok, "night"} = Exrabbit.Consumer.get(consumer_black)
-    assert {:ok, "sun"} = Exrabbit.Consumer.get(consumer_red)
-    assert {:error, :empty_response} = Exrabbit.Consumer.get(consumer_red)
+    assert {:ok, "night"} = Consumer.get(consumer_black)
+    assert {:ok, "sun"} = Consumer.get(consumer_red)
+    assert {:error, :empty_response} = Consumer.get(consumer_red)
 
-    assert {:ok, %Exrabbit.Message{
+    assert {:ok, %Message{
         exchange: "direct_test",
         routing_key: "black",
         message: amqp_msg(payload: "ash")}
-    } = Exrabbit.Consumer.get_full(consumer_black)
+    } = Consumer.get_full(consumer_black)
 
     :ok = Conn.close(recv_conn)
   end
@@ -225,40 +177,74 @@ defmodule ExrabbitTest do
   end
 
   test "publish with confirm" do
-    alias Exrabbit.Connection, as: Conn
-    use Exrabbit.Defs
-
     queue = queue_declare(queue: "confirm_test", auto_delete: true)
 
     # receive
     recv_conn = %Conn{channel: recv_chan} = Conn.open()
-    consumer = Exrabbit.Consumer.new(recv_chan, queue: queue)
+    consumer = Consumer.new(recv_chan, queue: queue)
 
     # send
     conn = %Conn{channel: chan} = Conn.open()
-    producer = Exrabbit.Producer.new(chan, queue: "confirm_test")
+    producer = Producer.new(chan, queue: "confirm_test")
     assert :not_in_confirm_mode = catch_throw(
-      Exrabbit.Producer.publish(producer, "hi", await_confirm: true, timeout: 100)
+      Producer.publish(producer, "hi", await_confirm: true, timeout: 100)
     )
     # the message could have been published or not; we don't know for sure
     purge = queue_purge(queue: "confirm_test")
     queue_purge_ok() = :amqp_channel.call(chan, purge)
 
     Exrabbit.Channel.set_mode(chan, :confirm)
-    assert :ok = Exrabbit.Producer.publish(producer, "hi", await_confirm: true, timeout: 100)
-    assert :ok = Exrabbit.Producer.publish(producer, "1")
-    assert :ok = Exrabbit.Producer.publish(producer, "2")
-    assert :ok = Exrabbit.Producer.publish(producer, "3")
+    assert :ok = Producer.publish(producer, "hi", await_confirm: true, timeout: 100)
+    assert :ok = Producer.publish(producer, "1")
+    assert :ok = Producer.publish(producer, "2")
+    assert :ok = Producer.publish(producer, "3")
     assert :ok = Exrabbit.Channel.await_confirms(chan, 100)
 
     :ok = Conn.close(conn)
+    # end send
 
-    assert {:ok, "hi"} = Exrabbit.Consumer.get(consumer)
-    assert {:ok, "1"} = Exrabbit.Consumer.get(consumer)
-    assert {:ok, "2"} = Exrabbit.Consumer.get(consumer)
-    assert {:ok, "3"} = Exrabbit.Consumer.get(consumer)
+    assert {:ok, "hi"} = Consumer.get(consumer)
+    assert {:ok, "1"} = Consumer.get(consumer)
+    assert {:ok, "2"} = Consumer.get(consumer)
+    assert {:ok, "3"} = Consumer.get(consumer)
 
     :ok = Conn.close(recv_conn)
+  end
+
+  ###
+
+  defp produce(opts, fun) when is_function(fun) do
+    do_produce(opts, fun)
+  end
+
+  defp produce(opts, messages) when is_list(messages) do
+    do_produce(opts, fn producer ->
+      Enum.each(messages, fn message ->
+        Producer.publish(producer, message)
+      end)
+    end)
+  end
+
+  defp subfun(pid) do
+    fn
+      {:begin, tag} -> send(pid, {self(), :amqp_started, tag})
+      {:end, tag} -> send(pid, {self(), :amqp_finished, tag})
+      {:msg, tag, message} -> send(pid, {self(), :amqp_received, tag, message})
+    end
+  end
+
+  defp do_produce(opts, fun) do
+    exchange = Keyword.get(opts, :exchange, "")
+    queue = case {Keyword.get(opts, :queue, nil), Keyword.get(opts, :new_queue, nil)} do
+      {nil, name} -> {:new_queue, name}
+      {queue, nil} -> {:queue, queue}
+    end
+
+    # send
+    conn = %Conn{channel: chan} = Conn.open()
+    producer = Producer.new(chan, [{:exchange, exchange}, queue])
+    fun.(producer)
+    :ok = Conn.close(conn)
   end
 
   #  test "low-level send receive" do
