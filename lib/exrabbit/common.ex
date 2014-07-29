@@ -1,7 +1,7 @@
 defmodule Exrabbit.Common do
   @moduledoc false
 
-  use Exrabbit.Defs
+  use Exrabbit.Records
 
   def declare_exchange(chan, exchange_declare(exchange: name)=x) do
     exchange_declare_ok() = :amqp_channel.call(chan, x)

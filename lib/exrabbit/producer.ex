@@ -2,7 +2,7 @@ defmodule Exrabbit.Producer do
   defstruct [channel: nil, exchange: "", routing_key: ""]
   alias __MODULE__
   alias Exrabbit.Common
-  use Exrabbit.Defs
+  use Exrabbit.Records
 
   @doc """
   Create a new producer bound to a channel.

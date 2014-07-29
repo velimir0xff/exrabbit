@@ -1,5 +1,5 @@
 defmodule Exrabbit.Channel do
-  use Exrabbit.Defs
+  use Exrabbit.Records
 
   alias Exrabbit.Connection, as: Conn
 

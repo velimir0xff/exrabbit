@@ -10,7 +10,7 @@ defmodule ExrabbitTest do
   alias Exrabbit.Producer
   alias Exrabbit.Consumer
   alias Exrabbit.Message
-  use Exrabbit.Defs
+  use Exrabbit.Records
 
   test "basic send receive" do
     queue = queue_declare(queue: @test_queue_name, auto_delete: true)

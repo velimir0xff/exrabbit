@@ -16,15 +16,15 @@ end
 
 import Record
 
-defmodule Exrabbit.Framing do
+defmodule Exrabbit.Records.Props do
   defrecord :pbasic, :'P_basic', Record.extract(:'P_basic', from_lib: "rabbit_common/include/rabbit_framing.hrl")
 end
 
-defmodule Exrabbit.Defs do
+defmodule Exrabbit.Records do
   defmacro __using__(_) do
     quote do
-      import Exrabbit.Framing
-      import Exrabbit.Defs
+      import Exrabbit.Records.Props
+      import Exrabbit.Records
     end
   end
 
@@ -52,6 +52,6 @@ defmodule Exrabbit.Defs do
     :"tx.select", :"tx.select_ok",
   ] |> extract_all("rabbit_common/include/rabbit_framing.hrl")
 
-  import Exrabbit.Framing
+  import Exrabbit.Records.Props
   defrecord :amqp_msg, [props: pbasic(), payload: ""]
 end

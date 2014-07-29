@@ -1,5 +1,5 @@
 defmodule Exrabbit.Utils do
-  use Exrabbit.Defs
+  use Exrabbit.Records
 
   def parse_message({basic_deliver(delivery_tag: tag), amqp_msg(props: pbasic(reply_to: nil), payload: payload)}), do: {tag, payload}
   def parse_message({basic_deliver(delivery_tag: tag), amqp_msg(props: pbasic(reply_to: reply_to), payload: payload)}), do: {tag, payload, reply_to}

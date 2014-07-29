@@ -1,5 +1,5 @@
 defmodule Exrabbit.Connection do
-  use Exrabbit.Defs
+  use Exrabbit.Records
 
   defstruct [connection: nil, channel: nil]
   alias __MODULE__
@@ -25,8 +25,8 @@ defmodule Exrabbit.Connection do
       username: get_default(:username),
       password: get_default(:password),
       host: get_default(:host) |> to_char_list,
-      virtual_host: "/",
-      heartbeat: 1
+      virtual_host: get_default(:virtual_host),
+      heartbeat: get_default(:hearbeat),
     ], options)
 
     {:ok, conn} = :amqp_connection.start(amqp_params_network(
@@ -70,7 +70,9 @@ defmodule Exrabbit.Connection do
     Application.get_env(:exrabbit, key, default(key))
   end
 
-  defp default(:host), do: "localhost"
   defp default(:username), do: "guest"
   defp default(:password), do: "guest"
+  defp default(:host), do: "localhost"
+  defp default(:virtual_host), do: "/"
+  defp default(:hearbeat), do: 1
 end

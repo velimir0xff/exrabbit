@@ -11,7 +11,7 @@ defmodule Exrabbit.Message do
 end
 
 defmodule Exrabbit.Consumer do
-  use Exrabbit.Defs
+  use Exrabbit.Records
 
   defstruct [channel: nil, queue: "", pid: nil, tag: nil]
   alias __MODULE__
@@ -94,8 +94,6 @@ defmodule Exrabbit.Consumer do
   Returns `{:ok, <message>}` or `{:error, <reason>}`.
   """
   def get(%Consumer{channel: chan, queue: queue}, options \\ []) do
-    import Exrabbit.Defs
-
     no_ack = Keyword.get(options, :no_ack, true)
 
     case do_get(chan, queue, no_ack) do
@@ -106,8 +104,6 @@ defmodule Exrabbit.Consumer do
   end
 
   def get_full(%Consumer{channel: chan, queue: queue}, options \\ []) do
-    import Exrabbit.Defs
-
     no_ack = Keyword.get(options, :no_ack, true)
 
     case do_get(chan, queue, no_ack) do
@@ -140,7 +136,6 @@ defmodule Exrabbit.Consumer do
   end
 
   defp service_loop_simple(fun) do
-    import Exrabbit.Defs
     receive do
       basic_consume_ok(consumer_tag: tag) ->
         fun.({:begin, tag})
@@ -155,7 +150,6 @@ defmodule Exrabbit.Consumer do
   end
 
   defp service_loop(fun) do
-    import Exrabbit.Defs
     receive do
       basic_consume_ok()=x ->
         fun.(x)
