@@ -79,10 +79,10 @@ the Erlang client and which ones have been superceded by a higher level API.
 It is often desirable for the consumer to be a GenServer. For this reason
 Exrabbit provides a DSL that simplifies the task of building one.
 
-First, we set up a producer with a fanout exchange.
+First, we set up a producer with a topic exchange.
 
 ```elixir
-exchange = exchange_declare(exchange: "test_fanout_x", type: "fanout")
+exchange = exchange_declare(exchange: "test_topic_x", type: "topic")
 producer = Producer.new(exchange: exchange)
 ```
 
@@ -90,25 +90,34 @@ Next, we need a consumer module.
 
 ```elixir
 defmodule TestConsumer do
-  # specify the name of our exchange and create a new exclusive queue
-  use Exrabbit.Consumer.DSL, exchange: "test_fanout_x", new_queue: ""
-
-  alias Exrabbit.Message
+  # Specify the name of our exchange.
+  use Exrabbit.Consumer.DSL,
+    exchange: "test_topic_x", new_queue: "", no_ack: false
 
   require Lager
 
-  def init(state) do
-    {:ok, state}
+  init [log_level] do
+    # Specifying options as the last element in the return tuple will override
+    # corresponding options passed to he `use` call above.
+    {:ok, log_level, binding_key: log_level}
   end
 
-  on nil do
-    nil -> Lager.info "Got nil message"
+  on %Message{message: body}=msg, level, consumer do
+    log(level, "#{inspect self()}: Got message with tag #{tag} and payload #{body}")
+    Consumer.ack(consumer, msg)
+    {:noreply, level}
   end
 
-  on %Message{delivery_tag: tag, message: body}, state do
-    Lager.info "Got message with tag #{tag} and payload #{body}"
-    ack(tag)
-    {:noreply, state}
+  defp log("info", msg) do
+    Lager.info(msg)
+  end
+
+  defp log("debug", msg) do
+    Lager.debug(msg)
+  end
+
+  defp log("error", msg) do
+    Lager.error(msg)
   end
 end
 ```
@@ -123,18 +132,18 @@ import Supervisor.Spec, warn: false
 # Create multiple workers, customizing the behaviour of each one by passing
 # different arguments.
 children = [
-  worker(TestConsumer, []),
-  worker(TestConsumer, []),
-  worker(TestConsumer, []),
+  worker(TestConsumer, ["info"]),
+  worker(TestConsumer, ["debug"]),
+  worker(TestConsumer, ["error"]),
 ]
 
 opts = [strategy: :one_for_one, name: Exrabbit.Supervisor]
 Supervisor.start_link(children, opts)
 
 # Back on the producer end.
-Producer.publish(producer, "[info] just a log message")
-Producer.publish(producer, "[info] it's being broadcasted")
-Producer.publish(producer, "[error] something unxpected happened")
+Producer.publish(producer, "just a log message", routing_key: "info")
+Producer.publish(producer, "it's being broadcasted", routing_key: "debug")
+Producer.publish(producer, "to all who are interested", routing_key: "error")
 
 # Once we're done with the producer, we can shut it down.
 # The consumers can be shut down via Supervisor.terminate_child.
