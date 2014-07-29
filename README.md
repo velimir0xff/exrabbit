@@ -68,6 +68,15 @@ alias Exrabbit.Consumer
 require Exrabbit.Records
 ```
 
+### Aside: working with records
+
+In order to provide all of functionality implemented by the Erlang client,
+in some cases Exrabbit relies on Erlang records that represent AMQP methods. A
+single method is an instance of a record and it is executed on a channel.
+
+See `doc/records.md` for an overview of which records have been inherited from
+the Erlang client and which ones are replaced by a higher level API.
+
 ### Publishing to a queue
 
 A basic example of a publisher:
@@ -106,15 +115,6 @@ queue = Exrabbit.Records.queue_declare(queue: "name", auto_delete: true, exclusi
 producer = Producer.new(chan, queue: queue)
 Producer.publish(producer, "message")
 ```
-
-### Aside: working with records
-
-In order to provide all of functionality implemented by the Erlang client,
-Exrabbit relies on Erlang records that represent AMQP methods. A single method
-is an instance of a record and it is executed on a channel.
-
-See `doc/records.md` for an overview of which records have been inherited from
-the Erlang client and which ones are replaced by a higher level API.
 
 ### Publishing to an exchange
 

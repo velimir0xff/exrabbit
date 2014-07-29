@@ -35,22 +35,37 @@ defmodule Exrabbit.Records do
   ] |> extract_all("amqp_client/include/amqp_client.hrl")
 
   [
-    :"queue.declare", :"queue.declare_ok", :"queue.bind", :"queue.bind_ok",
-    :"queue.purge", :"queue.purge_ok",
+    # Part of the public API
+    :"exchange.declare",
+    :"queue.declare",
+    :"basic.deliver",
+    :"basic.qos",
 
-    :"basic.get", :"basic.get_ok", :"basic.get_empty",
-    :"basic.consume", :"basic.consume_ok", :"basic.publish",
-    :"basic.cancel", :"basic.cancel_ok", :"basic.deliver",
+    # Exposed as Exrabbit functions
+    :"exchange.delete",
+    :"queue.purge",
+    :"queue.delete",
+    :"basic.publish", :"basic.get", :"basic.consume", :"basic.cancel",
     :"basic.ack", :"basic.nack", :"basic.reject",
+    :"confirm.select",
+    :"tx.select",
 
-    :"exchange.declare", :"exchange.declare_ok", :"exchange.delete", :"exchange.delete_ok",
-    :"exchange.bind", :"exchange.bind_ok", :"exchange.unbind", :"exchange.unbind_ok",
+    # Used internally
+    :"exchange.declare_ok", :"exchange.delete_ok",
+    :"exchange.bind", :"exchange.bind_ok",
 
-    :"basic.qos", :"basic.qos_ok",
+    :"queue.declare_ok", :"queue.bind", :"queue.bind_ok",
+    :"queue.purge_ok", :"queue.delete_ok",
 
-    :"confirm.select", :"confirm.select_ok",
+    :"basic.get_ok", :"basic.get_empty", :"basic.consume_ok",
+    :"basic.cancel_ok", :"basic.qos_ok",
 
-    :"tx.select", :"tx.select_ok",
+    :"confirm.select_ok",
+    :"tx.select_ok",
+
+    # Simply imported
+    :"exchange.unbind", :"exchange.unbind_ok",
+    :"queue.unbind", :"queue.unbind_ok",
   ] |> extract_all("rabbit_common/include/rabbit_framing.hrl")
 
   import Exrabbit.Records.Props

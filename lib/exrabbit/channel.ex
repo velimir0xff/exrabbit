@@ -1,22 +1,9 @@
 defmodule Exrabbit.Channel do
   use Exrabbit.Records
 
-  alias Exrabbit.Connection, as: Conn
-
   @confirm_timeout 15000
 
   @type channel :: pid
-
-  @doc """
-  Open a new connection with default settings and create a new channel on it.
-
-  Returns `{<chan>, <conn>}` or fails.
-  """
-  def open() do
-    conn = Conn.open()
-    chan = open(conn)
-    {chan, conn}
-  end
 
   @doc """
   Open a new channel on an established connection.
@@ -30,20 +17,14 @@ defmodule Exrabbit.Channel do
 
   @doc """
   Close previously opened channel.
-
-  If the argument is a tuple `{<chan>, <conn>}`, closes the connection too.
   """
-  def close({chan, conn}) do
-    :ok = close(chan)
-    Conn.close(conn)
-  end
-
+  @spec close(channel) :: :ok
   def close(chan), do: :amqp_channel.close(chan)
 
   @doc """
-  Switch the channel to confirmation or transactional mode.
+  Switch the channel to confirm-mode or tx-mode.
 
-  Once set, the mode cannot be changed.
+  Once set, the mode cannot be changed afterwards.
   """
   @spec set_mode(channel, :confirm | :tx) :: :ok
 
@@ -85,6 +66,41 @@ defmodule Exrabbit.Channel do
       requeue: Keyword.get(opts, :requeue, true)
     )
     :amqp_channel.call(chan, method)
+  end
+
+  def exchange_delete(chan, name, options \\ []) do
+    method = exchange_delete(
+      exchange: name,
+      if_unused: Keyword.get(options, :if_unused, false),
+    )
+    exchange_delete_ok() = :amqp_channel.call(chan, method)
+    :ok
+  end
+
+  @doc """
+  Clear a queue.
+
+  Returns the number of messages it contained.
+  """
+  def queue_purge(chan, name) do
+    method = queue_purge(queue: name)
+    queue_purge_ok(message_count: cnt) = :amqp_channel.call(chan, method)
+    cnt
+  end
+
+  @doc """
+  Delete a queue.
+
+  Returns the number of messages it contained.
+  """
+  def queue_delete(chan, name, options \\ []) do
+    method = queue_delete(
+      queue: name,
+      if_unused: Keyword.get(options, :if_unused, false),
+      if_empty: Keyword.get(options, :if_empty, false),
+    )
+    queue_delete_ok(message_count: cnt) = :amqp_channel.call(chan, method)
+    cnt
   end
 
   def await_confirms(chan, timeout \\ @confirm_timeout) do
