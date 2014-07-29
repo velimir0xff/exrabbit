@@ -162,7 +162,7 @@ defmodule ExrabbitTest.BasicTest do
 
     assert {:ok, "night"} = Consumer.get_body(consumer_black)
     assert {:ok, "sun"} = Consumer.get_body(consumer_red)
-    assert {:error, :empty_response} = Consumer.get_body(consumer_red)
+    assert nil = Consumer.get_body(consumer_red)
 
     assert {:ok, %Message{
         exchange: "direct_test",
@@ -191,14 +191,14 @@ defmodule ExrabbitTest.BasicTest do
 
     assert {:ok, "night"} = Consumer.get_body(consumer_black)
     assert {:ok, "sun"} = Consumer.get_body(consumer_red)
-    assert {:error, :empty_response} = Consumer.get_body(consumer_red)
+    assert nil = Consumer.get_body(consumer_red)
 
     assert {:ok, %Message{
         exchange: "direct_test",
         routing_key: "black",
         message: "ash"}=msg
     } = Consumer.get(consumer_black, no_ack: false)
-    assert {:error, :empty_response} = Consumer.get(consumer_black)
+    assert nil = Consumer.get(consumer_black)
     assert :ok = Message.nack(msg, chan)
 
     assert {:ok, %Message{
@@ -207,7 +207,7 @@ defmodule ExrabbitTest.BasicTest do
         message: "ash"}=msg
     } = Consumer.get(consumer_black, no_ack: false)
     assert :ok = Message.ack(msg, chan)
-    assert {:error, :empty_response} = Consumer.get(consumer_black)
+    assert nil = Consumer.get(consumer_black)
 
     :ok = Conn.close(conn)
   end

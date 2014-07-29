@@ -56,8 +56,7 @@ config :exrabbit,
 
 ## Usage (basic)
 
-In all of the example below we will assume the following aliases have been
-defined:
+In all examples below we will assume the following aliases have been defined:
 
 ```elixir
 alias Exrabbit.Connection, as: Conn
@@ -70,12 +69,13 @@ require Exrabbit.Records
 
 ### Aside: working with records
 
-In order to provide all of functionality implemented by the Erlang client,
-in some cases Exrabbit relies on Erlang records that represent AMQP methods. A
-single method is an instance of a record and it is executed on a channel.
+In order to provide the complete functionality implemented by the Erlang
+client, in some cases Exrabbit relies on Erlang records that represent AMQP
+methods. A single method is an instance of a record and it is executed on a
+channel.
 
 See `doc/records.md` for an overview of which records have been inherited from
-the Erlang client and which ones are replaced by a higher level API.
+the Erlang client and which ones have been superceded by a higher level API.
 
 ### Publishing to a queue
 
@@ -178,7 +178,7 @@ There is also a way to request messages one by one using the `get` function:
 
 consumer = Consumer.new(chan, exchange: topical_exchange, queue: queue)
 {:ok, message} = Consumer.get(consumer)
-{:error, :empty_response} = Consumer.get(consumer)
+nil = Consumer.get(consumer)
 ```
 
 ### Producer confirms and transactions

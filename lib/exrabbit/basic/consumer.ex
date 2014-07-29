@@ -83,7 +83,7 @@ defmodule Exrabbit.Consumer do
   """
   def get_body(%Consumer{channel: chan, queue: queue}) do
     case do_get(chan, queue, true) do
-      nil -> {:error, :empty_response}
+      nil -> nil
       {basic_get_ok(), amqp_msg(payload: body)} -> {:ok, body}
     end
   end
@@ -92,7 +92,7 @@ defmodule Exrabbit.Consumer do
     no_ack = Keyword.get(options, :no_ack, true)
 
     case do_get(chan, queue, no_ack) do
-      nil -> {:error, :empty_response}
+      nil -> nil
       {basic_get_ok(delivery_tag: dtag, redelivered: rflag, exchange: exchange,
                     routing_key: key, message_count: cnt),
                     amqp_msg(props: props, payload: body)} ->
