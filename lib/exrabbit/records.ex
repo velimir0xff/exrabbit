@@ -38,14 +38,15 @@ defmodule Exrabbit.Records do
     :"queue.declare", :"queue.declare_ok", :"queue.bind", :"queue.bind_ok",
     :"queue.purge", :"queue.purge_ok",
 
-    :"basic.get", :"basic.get_ok", :"basic.get_empty", :"basic.ack",
+    :"basic.get", :"basic.get_ok", :"basic.get_empty",
     :"basic.consume", :"basic.consume_ok", :"basic.publish",
     :"basic.cancel", :"basic.cancel_ok", :"basic.deliver",
+    :"basic.ack", :"basic.nack", :"basic.reject",
 
     :"exchange.declare", :"exchange.declare_ok", :"exchange.delete", :"exchange.delete_ok",
     :"exchange.bind", :"exchange.bind_ok", :"exchange.unbind", :"exchange.unbind_ok",
 
-    :"basic.qos", :"basic.qos_ok", :"basic.nack",
+    :"basic.qos", :"basic.qos_ok",
 
     :"confirm.select", :"confirm.select_ok",
 

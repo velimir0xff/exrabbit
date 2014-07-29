@@ -1,15 +1,3 @@
-defmodule Exrabbit.Message do
-  defstruct [
-    consumer_tag: nil,
-    delivery_tag: nil,
-    redelivered: false,
-    exchange: "",
-    routing_key: "",
-    message_count: nil,
-    message: nil,
-  ]
-end
-
 defmodule Exrabbit.Consumer do
   use Exrabbit.Records
 
@@ -93,26 +81,24 @@ defmodule Exrabbit.Consumer do
 
   Returns `{:ok, <message>}` or `{:error, <reason>}`.
   """
+  def get_body(%Consumer{channel: chan, queue: queue}) do
+    case do_get(chan, queue, true) do
+      nil -> {:error, :empty_response}
+      {basic_get_ok(), amqp_msg(payload: body)} -> {:ok, body}
+    end
+  end
+
   def get(%Consumer{channel: chan, queue: queue}, options \\ []) do
     no_ack = Keyword.get(options, :no_ack, true)
 
     case do_get(chan, queue, no_ack) do
       nil -> {:error, :empty_response}
-      {basic_get_ok(), amqp_msg(payload: body)} ->
-        {:ok, body}
-    end
-  end
-
-  def get_full(%Consumer{channel: chan, queue: queue}, options \\ []) do
-    no_ack = Keyword.get(options, :no_ack, true)
-
-    case do_get(chan, queue, no_ack) do
-      nil -> {:error, :empty_response}
       {basic_get_ok(delivery_tag: dtag, redelivered: rflag, exchange: exchange,
-                    routing_key: key, message_count: cnt), amqp_msg()=payload} ->
+                    routing_key: key, message_count: cnt),
+                    amqp_msg(props: props, payload: body)} ->
         msg = %Exrabbit.Message{
           delivery_tag: dtag, redelivered: rflag, exchange: exchange,
-          routing_key: key, message_count: cnt, message: payload,
+          routing_key: key, message_count: cnt, message: body, props: props,
         }
         {:ok, msg}
     end
@@ -158,10 +144,11 @@ defmodule Exrabbit.Consumer do
         fun.(x)
         :ok
       {basic_deliver(consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
-                     exchange: exchange, routing_key: key), amqp_msg()=payload} ->
+                     exchange: exchange, routing_key: key),
+                     amqp_msg(props: props, payload: body)} ->
         msg = %Exrabbit.Message{
           consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
-          exchange: exchange, routing_key: key, message: payload,
+          exchange: exchange, routing_key: key, message: body, props: props,
         }
         fun.(msg)
         service_loop(fun)

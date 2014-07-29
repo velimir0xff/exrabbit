@@ -44,10 +44,10 @@ Example `config.exs`:
 use Mix.Config
 
 config :exrabbit,
-    host: "localhost",
-    username: "guest",
-    password: "guest",
-    confirm_timeout: 5000
+  host: "localhost",
+  username: "guest",
+  password: "guest",
+  confirm_timeout: 5000
 ```
 
 
@@ -61,9 +61,8 @@ defined:
 
 ```elixir
 alias Exrabbit.Connection, as: Conn
-alias Exrabbit.Channel, as: Chan
-alias Exrabbit.Producer, as: Producer
-alias Exrabbit.Consumer, as: Consumer
+alias Exrabbit.Producer
+alias Exrabbit.Consumer
 
 # this call is needed when working with records
 require Exrabbit.Records

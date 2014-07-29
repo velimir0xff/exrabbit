@@ -62,20 +62,29 @@ defmodule Exrabbit.Channel do
     :ok
   end
 
-  def ack(chan, basic_ack()=method) do
+  def ack(chan, tag, opts \\ []) do
+    method = basic_ack(
+      delivery_tag: tag,
+      multiple: Keyword.get(opts, :multiple, false)
+    )
     :amqp_channel.call(chan, method)
   end
 
-  def ack(chan, tag) do
-    :amqp_channel.call(chan, basic_ack(delivery_tag: tag))
-  end
-
-  def nack(chan, basic_nack()=method) do
+  def nack(chan, tag, opts \\ []) do
+    method = basic_nack(
+      delivery_tag: tag,
+      multiple: Keyword.get(opts, :multiple, false),
+      requeue: Keyword.get(opts, :requeue, true)
+    )
     :amqp_channel.call(chan, method)
   end
 
-  def nack(chan, tag) do
-    :amqp_channel.call(chan, basic_nack(delivery_tag: tag))
+  def reject(chan, tag, opts \\ []) do
+    method = basic_reject(
+      delivery_tag: tag,
+      requeue: Keyword.get(opts, :requeue, true)
+    )
+    :amqp_channel.call(chan, method)
   end
 
   def await_confirms(chan, timeout \\ @confirm_timeout) do
