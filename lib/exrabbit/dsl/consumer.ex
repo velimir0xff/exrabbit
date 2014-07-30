@@ -10,8 +10,6 @@ defmodule Exrabbit.Consumer.DSL do
     end
 
     quote do
-      @before_compile unquote(__MODULE__)
-
       use Exrabbit.Records
 
       unquote(imports)
@@ -29,11 +27,7 @@ defmodule Exrabbit.Consumer.DSL do
       def handle_call({unquote(__MODULE__), :shutdown}, _from, state) do
         {:stop, :normal, :ok, state}
       end
-    end
-  end
 
-  defmacro __before_compile__(_env) do
-    quote do
       def handle_info(basic_consume_ok(), state) do
         {:noreply, state}
       end
