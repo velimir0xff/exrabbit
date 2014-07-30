@@ -15,6 +15,9 @@ API.
 Climbing the ladder of abstraction even higher, Exrabbit provides a set of DSLs
 that make writing common types of AMQP producers and consumers a breeze.
 
+The current version is based on rabbitmq-erlang-client v3.3.0 (AMQP 0-9-1 with
+extensions).
+
 
 ## Installation
 
@@ -53,6 +56,14 @@ config :exrabbit,
 
 ## Preliminaries
 
+In order to provide the complete functionality implemented by the Erlang
+client, in some cases Exrabbit relies on Erlang records that represent AMQP
+methods. A single method is an instance of a record and it is executed on a
+channel.
+
+See `doc/records.md` for an overview of which records have been inherited from
+the Erlang client and which ones are superceded by a higher level API.
+
 In all examples below we will assume the following aliases have been defined:
 
 ```elixir
@@ -62,16 +73,6 @@ alias Exrabbit.Consumer
 # this call is needed when working with records
 require Exrabbit.Records
 ```
-
-### Aside: working with records
-
-In order to provide the complete functionality implemented by the Erlang
-client, in some cases Exrabbit relies on Erlang records that represent AMQP
-methods. A single method is an instance of a record and it is executed on a
-channel.
-
-See `doc/records.md` for an overview of which records have been inherited from
-the Erlang client and which ones have been superceded by a higher level API.
 
 
 ## Usage (DSL)
@@ -90,7 +91,6 @@ Next, we need a consumer module.
 
 ```elixir
 defmodule TestConsumer do
-  # Specify the name of our exchange.
   use Exrabbit.Consumer.DSL,
     exchange: "test_topic_x", new_queue: "", no_ack: false
 
@@ -126,7 +126,7 @@ supervisor) we can start publishing messages and receiving them on the consumer
 end.
 
 ```elixir
-import Supervisor.Spec, warn: false
+import Supervisor.Spec
 
 # Create multiple workers, customizing the behaviour of each one by passing
 # different arguments.
@@ -138,6 +138,7 @@ children = [
 
 opts = [strategy: :one_for_one, name: Exrabbit.Supervisor]
 Supervisor.start_link(children, opts)
+
 
 # Back on the producer end.
 Producer.publish(producer, "just a log message", routing_key: "info")
@@ -260,147 +261,31 @@ In confirm mode each published message will be ack'ed or nack'ed by the broker.
 In tx-mode one has to call `Exrabbit.Producer.commit` after sending a batch of
 messages. Those messages will be delivered atomically: either all or nothing.
 
-See `doc/producer_basic.md` for examples.
+See `doc/basic_producer.md` for examples.
 
 ### Consumer acknowledgements
 
 When receiving messages, consumers may specify whether the broker should wait
 for acknowledgement before removing a message from the queue.
 
-See `doc/consumer_basic.md` for examples.
+See `doc/basic_consumer.md` for examples.
 
 
-## OLD README ##
+## Further information
 
-Easy way to get a queue/exchange worker:
+If you find any parts for the documentation lacking, please report an issues on
+the tracker. In the meantime, you may consult the documentation for the [Erlang
+client][erldoc] and this [quick reference][refdoc] that describes AMQP methods
+in detail.
 
+All check out the detailed guide for the Ruby client [here][rubydoc], most of
+which applies to Exrabbit as well.
 
-```elixir
-import Exrabbit.DSL
-
-amqp_worker TestQ, queue: "testQ" do
-  on json = %{} do
-    IO.puts "JSON: #{inspect json}"
-  end
-  on <<"hello">> do
-    IO.puts "Hello-hello from MQ"
-  end
-  on text do
-    IO.puts "Some random binary: #{inspect text}"
-  end
-end
-```
-
-N.B. Instead of passing configuration options when defining module with `amqp_worker` one can add following to config.exs:
-
-```elixir
-[
-  exrabbit: [
-    my_queue: [queue: "TestQ"]
-  ]
-]
-```
-
-and then define module as:
+  [refdoc]: http://www.rabbitmq.com/amqp-0-9-1-reference.html
+  [erldoc]: http://www.rabbitmq.com/releases/rabbitmq-erlang-client/v3.3.4/doc/
+  [rubydoc]: http://rubybunny.info/articles/guides.html
 
 
-```elixir
-amqp_worker TestQ, config_name: :my_queue, decode_json: [keys: :atoms] do
-  on %{cmd: "resize_image", image: image} do
-    IO.puts "Resizing image: #{inspect image}"
-  end
-end
-```
+## License
 
-
-Checking if message was published:
-
-
-```elixir
-publish(channel, exchange, routing_key, message, :wait_confirmation)
-```
-
-
-Workflow to send message:
-
-
-```elixir
-amqp = Exrabbit.Utils.connect
-channel = Exrabbit.Utils.channel amqp
-Exrabbit.Utils.publish channel, "testExchange", "", "hello, world"
-```
-
-
-To get messages, almost the same, but functions are
-
-
-```elixir
-Exrabbit.Utils.get_messages channel, "testQueue"
-case Exrabbit.Utils.get_messages_ack channel, "testQueue" do
-	nil -> IO.puts "No messages waiting"
-	[tag: tag, content: message] ->
-		IO.puts "Got message #{message}"
-		Exrabbit.Utils.ack tag # acking message
-end
-```
-
-
-Please consult: http://www.rabbitmq.com/erlang-client-user-guide.html#returns to find out how to write gen_server consuming messages.
-
-
-```elixir
-defmodule Consumer do
-  use GenServer.Behaviour
-  import Exrabbit.Utils
-  require Lager
-
-  def start_link, do: :gen_server.start_link(Consumer, [], [])
-
-  def init(_opts) do
-    amqp = connect
-    channel = channel amqp
-    subscribe channel, "testQ"
-    {:ok, [connection: amqp, channel: channel]}
-  end
-
-  def handle_info(request, state) do
-    case parse_message(request) do
-      nil -> Lager.info "Got nil message"
-      {tag, payload} ->
-        Lager.info "Got message with tag #{tag} and payload #{payload}"
-        ack state[:channel], tag
-    end
-    { :noreply, state}
-  end
-end
-```
-
-
-Or same, using behaviours:
-
-
-```elixir
-defmodule Test do
-  use Exrabbit.Subscriber
-
-  def handle_message(msg, _state) do
-    case parse_message(msg) do
-      nil ->
-        IO.puts "Nil"
-      {tag,json} ->
-        IO.puts "Msg: #{json}"
-        ack _state[:channel], tag
-      {tag,json,reply_to} ->
-        IO.puts "For RPC messaging: #{json}"
-        publish(_state[:channel], "", reply_to, "#{json}") # Return ECHO
-        ack _state[:channel], tag
-    end
-  end
-end
-
-:gen_server.start Test, [queue: "testQ"], []
-```
-
-
-
-
+This software is licensed under [the MIT license](LICENSE).
