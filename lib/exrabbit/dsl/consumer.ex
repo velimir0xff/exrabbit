@@ -126,6 +126,26 @@ defmodule Exrabbit.Consumer.DSL do
     {:noreply, {consumer, state}, timeout}
   end
 
+  def wrap_info_result({:nack, state}, msg, consumer) do
+    Consumer.nack(consumer, msg)
+    {:noreply, {consumer, state}}
+  end
+
+  def wrap_info_result({:nack, state, timeout}, msg, consumer) do
+    Consumer.nack(consumer, msg)
+    {:noreply, {consumer, state}, timeout}
+  end
+
+  def wrap_info_result({:reject, state}, msg, consumer) do
+    Consumer.reject(consumer, msg)
+    {:noreply, {consumer, state}}
+  end
+
+  def wrap_info_result({:reject, state, timeout}, msg, consumer) do
+    Consumer.reject(consumer, msg)
+    {:noreply, {consumer, state}, timeout}
+  end
+
   def wrap_info_result(other, _, _), do: other
 
 
