@@ -261,14 +261,14 @@ In confirm mode each published message will be ack'ed or nack'ed by the broker.
 In tx-mode one has to call `Exrabbit.Producer.commit` after sending a batch of
 messages. Those messages will be delivered atomically: either all or nothing.
 
-See `doc/basic_producer.md` for examples.
+See `doc/producer_examples.md` for details.
 
 ### Consumer acknowledgements
 
 When receiving messages, consumers may specify whether the broker should wait
 for acknowledgement before removing a message from the queue.
 
-See `doc/basic_consumer.md` for examples.
+See `doc/consumer_examples.md` for details.
 
 
 ## Further information
