@@ -70,12 +70,19 @@ defmodule Exrabbit.Consumer do
       fun when is_function(fun, 1) ->
         spawn_service_proc(fun, simple_messages)
     end
-    tag = do_subscribe(chan, queue, pid)
+    tag = do_subscribe(chan, queue, pid, options)
     %Consumer{consumer | tag: tag, pid: pid}
   end
 
-  defp do_subscribe(chan, queue, pid) do
-    method = basic_consume(queue: queue)
+  defp do_subscribe(chan, queue, pid, options) do
+    method = basic_consume(
+      queue: queue,
+      consumer_tag: Keyword.get(options, :consumer_tag, ""),
+      no_local: Keyword.get(options, :no_local, false),
+      no_ack: Keyword.get(options, :no_ack, true),
+      exclusive: Keyword.get(options, :exclusive, false),
+      arguments: Keyword.get(options, :extra, []),
+    )
     basic_consume_ok(consumer_tag: consumer_tag) =
       :amqp_channel.subscribe(chan, method, pid)
     consumer_tag

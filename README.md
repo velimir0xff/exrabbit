@@ -104,8 +104,7 @@ defmodule TestConsumer do
 
   on %Message{message: body}=msg, level, consumer do
     log(level, "#{inspect self()}: Got message with tag #{tag} and payload #{body}")
-    Consumer.ack(consumer, msg)
-    {:noreply, level}
+    {:ack, level}
   end
 
   defp log("info", msg) do
@@ -149,6 +148,7 @@ Producer.publish(producer, "to all who are interested", routing_key: "error")
 # The consumers can be shut down via Supervisor.terminate_child.
 Producer.shutdown(producer)
 ```
+
 
 ## Usage (basic)
 

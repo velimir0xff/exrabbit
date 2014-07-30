@@ -16,12 +16,16 @@ defmodule Exrabbit.Consumer.DSL do
       import unquote(__MODULE__), only: [init: 2, on: 3, on: 4]
       @__Exrabbit_Consumer_DSL_options__ unquote(options)
 
-      def terminate(_reason, {consumer, _state}) do
-        unquote(__MODULE__).shutdown_consumer(consumer)
+      def struct(pid) do
+        GenServer.call(pid, {unquote(__MODULE__), :struct})
       end
 
       def shutdown(pid) do
         GenServer.call(pid, {unquote(__MODULE__), :shutdown})
+      end
+
+      def handle_call({unquote(__MODULE__), :struct}, _from, {consumer, _}=state) do
+        {:reply, consumer, state}
       end
 
       def handle_call({unquote(__MODULE__), :shutdown}, _from, state) do
@@ -46,6 +50,10 @@ defmodule Exrabbit.Consumer.DSL do
         }
         on_message(msg, state)
       end
+
+      def terminate(_reason, {consumer, _state}) do
+        unquote(__MODULE__).shutdown_consumer(consumer)
+      end
     end
   end
 
@@ -60,18 +68,18 @@ defmodule Exrabbit.Consumer.DSL do
 
   defmacro on(pattern, state, do: body) do
     quote do
-      defp on_message(unquote(pattern), {consumer, unquote(state)}) do
+      defp on_message(unquote(pattern)=msg, {consumer, unquote(state)}) do
         tuple = unquote(body)
-        unquote(__MODULE__).wrap_info_result(tuple, consumer)
+        unquote(__MODULE__).wrap_info_result(tuple, msg, consumer)
       end
     end
   end
 
   defmacro on(pattern, state, consumer, do: body) do
     quote do
-      defp on_message(unquote(pattern), {unquote(consumer)=consumer, unquote(state)}) do
+      defp on_message(unquote(pattern)=msg, {unquote(consumer)=consumer, unquote(state)}) do
         tuple = unquote(body)
-        unquote(__MODULE__).wrap_info_result(tuple, consumer)
+        unquote(__MODULE__).wrap_info_result(tuple, msg, consumer)
       end
     end
   end
@@ -100,15 +108,25 @@ defmodule Exrabbit.Consumer.DSL do
   def post_init(other, _), do: other
 
 
-  def wrap_info_result({:noreply, state}, consumer) do
+  def wrap_info_result({:noreply, state}, _, consumer) do
     {:noreply, {consumer, state}}
   end
 
-  def wrap_info_result({:noreply, state, timeout}, consumer) do
+  def wrap_info_result({:noreply, state, timeout}, _, consumer) do
     {:noreply, {consumer, state}, timeout}
   end
 
-  def wrap_info_result(other, _), do: other
+  def wrap_info_result({:ack, state}, msg, consumer) do
+    Consumer.ack(consumer, msg)
+    {:noreply, {consumer, state}}
+  end
+
+  def wrap_info_result({:ack, state, timeout}, msg, consumer) do
+    Consumer.ack(consumer, msg)
+    {:noreply, {consumer, state}, timeout}
+  end
+
+  def wrap_info_result(other, _, _), do: other
 
 
   def shutdown_consumer(consumer) do
@@ -118,7 +136,7 @@ defmodule Exrabbit.Consumer.DSL do
   ###
 
   defp init_consumer(state, options) do
-    consumer = Consumer.new(options) |> Consumer.subscribe(self(), simple: false)
+    consumer = Consumer.new(options) |> Consumer.subscribe(self(), [simple: false] ++ options)
     {consumer, state}
   end
 end
