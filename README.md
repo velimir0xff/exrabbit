@@ -275,10 +275,10 @@ See `doc/basic_consumer.md` for examples.
 
 If you find any parts for the documentation lacking, please report an issues on
 the tracker. In the meantime, you may consult the documentation for the [Erlang
-client][erldoc] and this [quick reference][refdoc] that describes AMQP methods
-in detail.
+client][erldoc] and this [reference][refdoc] that describes AMQP methods in
+detail.
 
-All check out the detailed guide for the Ruby client [here][rubydoc], most of
+Also check out the detailed guide for the Ruby client [here][rubydoc], most of
 which applies to Exrabbit as well.
 
   [refdoc]: http://www.rabbitmq.com/amqp-0-9-1-reference.html
