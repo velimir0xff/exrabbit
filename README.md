@@ -12,8 +12,8 @@ This project's aim is not to be a complete replacement for the Erlang client.
 Instead, it captures common usage patterns and exposes them as a higher level
 API.
 
-Climbing the ladder of abstraction even higher, Exrabbit provides a set of DSLs
-that make writing common types of AMQP producers and consumers a breeze.
+Climbing the ladder of abstraction even higher, Exrabbit provides a DSL that
+makes writing common types of AMQP consumers a breeze.
 
 The current version is based on rabbitmq-erlang-client v3.3.0 (AMQP 0-9-1 with
 extensions).
