@@ -13,7 +13,7 @@ defmodule Exrabbit.Consumer do
   @type simple_message :: {:start, binary} | {:end, binary} | {:msg, binary, binary}
   @type full_message :: Exrabbit.Records.basic_consume_ok
                       | Exrabbit.Records.basic_cancel_ok
-                      | {Exrabbit.Records.basic_deliver, Exrabbit.Records.amqp_msg}
+                      | %Exrabbit.Message{}
 
   @doc """
   Create a new consumer bound to a channel.
@@ -246,13 +246,8 @@ defmodule Exrabbit.Consumer do
       basic_cancel_ok()=x ->
         fun.(x)
         :ok
-      {basic_deliver(consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
-                     exchange: exchange, routing_key: key),
-                     amqp_msg(props: props, payload: body)} ->
-        msg = %Message{
-          consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
-          exchange: exchange, routing_key: key, body: body, props: props,
-        }
+      {basic_deliver(), amqp_msg()}=incoming_msg ->
+        msg = Exrabbit.Util.parse_message(incoming_msg)
         fun.(msg)
         service_loop(fun)
 

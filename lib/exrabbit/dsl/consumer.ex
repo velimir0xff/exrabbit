@@ -107,14 +107,8 @@ defmodule Exrabbit.Consumer.DSL do
         {:noreply, state}
       end
 
-      def handle_info({basic_deliver(
-                          consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
-                          exchange: exchange, routing_key: key),
-                       amqp_msg(props: props, payload: body)}, state) do
-        msg = %Exrabbit.Message{
-          consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
-          exchange: exchange, routing_key: key, body: body, props: props,
-        }
+      def handle_info({basic_deliver(), amqp_msg()}=incoming_msg, state) do
+        msg = Exrabbit.Util.parse_message(incoming_msg)
         on_message(msg, state)
       end
 
