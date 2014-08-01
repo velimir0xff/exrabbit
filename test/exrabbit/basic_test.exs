@@ -165,7 +165,7 @@ defmodule ExrabbitTest.BasicTest do
     assert {:ok, %Message{
         exchange: "direct_test",
         routing_key: "black",
-        message: "ash"}
+        body: "ash"}
     } = Consumer.get(consumer_black)
 
     :ok = Conn.close(conn)
@@ -183,14 +183,14 @@ defmodule ExrabbitTest.BasicTest do
 
     assert {:ok, %Message{
         routing_key: "test_ack_queue",
-        message: "ash"}=msg
+        body: "ash"}=msg
     } = Consumer.get(consumer, no_ack: false)
     assert nil = Consumer.get(consumer)
     assert :ok = Consumer.nack(consumer, msg)
 
     assert {:ok, %Message{
         routing_key: "test_ack_queue",
-        message: "ash"}=msg
+        body: "ash"}=msg
     } = Consumer.get(consumer, no_ack: false)
     assert :ok = Consumer.ack(consumer, msg)
     assert nil = Consumer.get(consumer)

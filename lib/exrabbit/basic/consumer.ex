@@ -120,7 +120,7 @@ defmodule Exrabbit.Consumer do
                     amqp_msg(props: props, payload: body)} ->
         msg = %Message{
           delivery_tag: dtag, redelivered: rflag, exchange: exchange,
-          routing_key: key, message_count: cnt, message: body, props: props,
+          routing_key: key, message_count: cnt, body: body, props: props,
         }
         {:ok, msg}
     end
@@ -182,7 +182,7 @@ defmodule Exrabbit.Consumer do
                      amqp_msg(props: props, payload: body)} ->
         msg = %Message{
           consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
-          exchange: exchange, routing_key: key, message: body, props: props,
+          exchange: exchange, routing_key: key, body: body, props: props,
         }
         fun.(msg)
         service_loop(fun)

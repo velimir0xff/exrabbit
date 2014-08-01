@@ -102,7 +102,7 @@ defmodule TestConsumer do
     {:ok, log_level, binding_key: log_level}
   end
 
-  on %Message{message: body}=msg, level, consumer do
+  on %Message{body: body}=msg, level, consumer do
     log(level, "#{inspect self()}: Got message with tag #{tag} and payload #{body}")
     {:ack, level}
   end

@@ -13,7 +13,7 @@ defmodule TestConsumer do
     {:ok, name, binding_key: key}
   end
 
-  on %Message{message: body}, name do
+  on %Message{body: body}, name do
     IO.puts "#{name} received #{body}"
     {:noreply, name}
   end
@@ -36,7 +36,7 @@ defmodule TestConsumerAck do
     {:ok, nil}
   end
 
-  on %Message{message: body}, nil do
+  on %Message{body: body}, nil do
     IO.puts "received and promised to acknowledge #{body}"
     {:ack, nil}
   end
@@ -58,12 +58,12 @@ defmodule TestConsumerAckManual do
     {:ok, name, binding_key: key}
   end
 
-  on %Message{message: "don't ack me"}, name do
+  on %Message{body: "don't ack me"}, name do
     IO.puts "#{name} skipped ack"
     {:noreply, name}
   end
 
-  on %Message{message: body}=msg, name, consumer do
+  on %Message{body: body}=msg, name, consumer do
     ack(consumer, msg)
     IO.puts "#{name} received and acknowledged #{body}"
     {:noreply, name}

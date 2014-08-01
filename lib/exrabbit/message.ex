@@ -8,7 +8,7 @@ defmodule Exrabbit.Message do
     exchange: "",
     routing_key: "",
     message_count: nil,
-    message: "",
+    body: "",
     props: pbasic(),
   ]
 end

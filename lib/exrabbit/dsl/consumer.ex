@@ -40,12 +40,12 @@ defmodule Exrabbit.Consumer.DSL do
           {:ok, nil}
         end
 
-        on %Message{message: body}, nil do
+        on %Message{body: body}, nil do
           IO.puts "received and promised to acknowledge #{body}"
           {:ack, nil}
         end
 
-        on %Message{message: body}=msg, nil, consumer do
+        on %Message{body: body}=msg, nil, consumer do
           ack(consumer, msg)
           IO.puts "received and acknowledged #{body}"
           {:noreply, nil}
@@ -113,7 +113,7 @@ defmodule Exrabbit.Consumer.DSL do
                        amqp_msg(props: props, payload: body)}, state) do
         msg = %Exrabbit.Message{
           consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
-          exchange: exchange, routing_key: key, message: body, props: props,
+          exchange: exchange, routing_key: key, body: body, props: props,
         }
         on_message(msg, state)
       end
@@ -173,7 +173,7 @@ defmodule Exrabbit.Consumer.DSL do
 
   ## Example
 
-      on %Message{delivery_tag: tag, message: body}, state do
+      on %Message{delivery_tag: tag, body: body}, state do
         IO.puts "Got '#{body}' with tag #{tag}"
         {:ack, state}
       end
@@ -200,7 +200,7 @@ defmodule Exrabbit.Consumer.DSL do
 
   ## Example
 
-      on %Message{message: body}=msg, state, consumer do
+      on %Message{body: body}=msg, state, consumer do
         ack(consumer, msg)
         some_lengthy_processing(body)
         {:noreply, state}
