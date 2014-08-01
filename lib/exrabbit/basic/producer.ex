@@ -66,6 +66,8 @@ defmodule Exrabbit.Producer do
   @doc """
   Publish a message to the producer's exchange.
 
+  The message can be a binary or an `amqp_msg` record.
+
   ## Options
 
     * `exchange: <binary>` - override the exchange
@@ -143,9 +145,14 @@ defmodule Exrabbit.Producer do
     end
   end
 
-  defp do_publish(chan, exchange, routing_key, message) do
+  defp do_publish(chan, exchange, routing_key, message) when is_binary(message) do
     method = basic_publish(exchange: exchange, routing_key: routing_key)
     msg = amqp_msg(payload: message)
+    :amqp_channel.call(chan, method, msg)
+  end
+
+  defp do_publish(chan, exchange, routing_key, amqp_msg()=msg) do
+    method = basic_publish(exchange: exchange, routing_key: routing_key)
     :amqp_channel.call(chan, method, msg)
   end
 
