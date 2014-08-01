@@ -79,6 +79,12 @@ defmodule Exrabbit.Producer do
       a description of the list format. This option is ignored when passing
       `amqp_msg` record.
 
+    * `mandatory: <boolean>` - specify whether the message should be returned
+      back to the client if it can't be routed.
+
+    * `immediate: <boolean>` - will return the message back to the client if it
+      can't be routed immediately.
+
     * `await_confirm: <boolean>` - await for this (and previously unconfirmed)
       message to be confirmed by the broker. Default: `false`.
 
@@ -94,9 +100,14 @@ defmodule Exrabbit.Producer do
     exchange = Keyword.get(options, :exchange, "")
     routing_key = Keyword.get(options, :routing_key, "")
     headers = Keyword.get(options, :headers, [])
-    wait = Keyword.get(options, :await_confirm, false)
     timeout = Keyword.get(options, :timeout, nil)
-    publish(chan, exchange, routing_key, headers, message, wait, timeout)
+
+    mandatory = Keyword.get(options, :mandatory, false)
+    immediate = Keyword.get(options, :immediate, false)
+    wait = Keyword.get(options, :await_confirm, false)
+    flags = %{mandatory: mandatory, immediate: immediate, await_confirm: wait}
+
+    publish(chan, exchange, routing_key, headers, message, flags, timeout)
   end
 
   @doc """
@@ -141,12 +152,12 @@ defmodule Exrabbit.Producer do
 
   ###
 
-  defp publish(chan, exchange, routing_key, headers, message, false, _) do
-    do_publish(chan, exchange, routing_key, headers, message)
+  defp publish(chan, exchange, routing_key, headers, message, %{await_confirm: false}=flags, _) do
+    do_publish(chan, exchange, routing_key, headers, flags, message)
   end
 
-  defp publish(chan, exchange, routing_key, headers, message, true, timeout) do
-    :ok = do_publish(chan, exchange, routing_key, headers, message)
+  defp publish(chan, exchange, routing_key, headers, message, %{await_confirm: true}=flags, timeout) do
+    :ok = do_publish(chan, exchange, routing_key, headers, flags, message)
     if timeout do
       Exrabbit.Channel.await_confirms(chan, timeout)
     else
@@ -154,16 +165,22 @@ defmodule Exrabbit.Producer do
     end
   end
 
-  defp do_publish(chan, exchange, routing_key, headers, message) when is_binary(message) do
-    method = basic_publish(exchange: exchange, routing_key: routing_key)
-    msg = amqp_msg(payload: message, props: pbasic(headers: headers))
+  defp do_publish(chan, exchange, routing_key, headers, flags, message) do
+    method = basic_publish(
+      exchange: exchange,
+      routing_key: routing_key,
+      mandatory: flags.mandatory,
+      immediate: flags.immediate,
+    )
+    msg = wrap_message(message, headers)
     :amqp_channel.call(chan, method, msg)
   end
 
-  defp do_publish(chan, exchange, routing_key, _headers, amqp_msg()=msg) do
-    method = basic_publish(exchange: exchange, routing_key: routing_key)
-    :amqp_channel.call(chan, method, msg)
+  defp wrap_message(message, headers) when is_binary(message) do
+    amqp_msg(payload: message, props: pbasic(headers: headers))
   end
+
+  defp wrap_message(amqp_msg()=msg, _), do: msg
 
   defp choose_routing_key(_exchange, queue, nil) do
     queue
@@ -173,8 +190,9 @@ defmodule Exrabbit.Producer do
     binding_key
   end
 
+  @valid_options [:exchange, :routing_key, :mandatory, :immediate, :await_confirm, :timeout]
   defp validate_publish_options(options) do
-    case Enum.partition(options, fn {k, _} -> k in [:exchange, :routing_key, :await_confirm, :timeout] end) do
+    case Enum.partition(options, fn {k, _} -> k in @valid_options end) do
       {good, []} -> good
       {_, bad} -> raise "Bad options to publish(): #{inspect bad}"
     end

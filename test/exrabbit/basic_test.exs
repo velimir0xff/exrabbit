@@ -276,6 +276,30 @@ defmodule ExrabbitTest.BasicTest do
     :ok = Consumer.shutdown(consumer)
   end
 
+  test "returned messages" do
+    parent = self()
+    pid = spawn_link(fn ->
+      receive do
+        {basic_return(routing_key: key), amqp_msg(payload: body)} ->
+          send(parent, {self(), :got_return, key, body})
+      end
+      receive do
+        :shutdown -> nil
+      end
+    end)
+
+    producer = %Producer{chan: chan} = Producer.new(exchange: "")
+    :amqp_channel.register_return_handler(chan, pid)
+    assert :ok = Producer.publish(producer, "hi", routing_key: "unroutable", mandatory: true)
+    :timer.sleep(100)
+
+    assert_receive {^pid, :got_return, "unroutable", "hi"}
+    assert :ok = :amqp_channel.unregister_return_handler(chan)
+    send(pid, :shutdown)
+
+    Producer.shutdown(producer)
+  end
+
   ###
 
   defp produce(opts, fun) when is_function(fun) do
@@ -308,37 +332,4 @@ defmodule ExrabbitTest.BasicTest do
     fun.(producer)
     :ok = Producer.shutdown(producer)
   end
-
-  #  test "low-level send receive" do
-  #    alias Exrabbit.Channel, as: Chan
-  #    use Exrabbit.Defs
-  #
-  #    # send
-  #    conn = {chan, _} = Chan.open()
-  #
-  #    exchange_rm = exchange_delete(exchange: "test_exchange")
-  #    exchange = exchange_declare(exchange: "test_exchange", type: "direct", durable: true)
-  #    Chan.exec(chan, [exchange_rm, exchange])
-  #
-  #    # receive
-  #    recv_conn = {recv_chan, _} = Chan.open()
-  #
-  #    queue1 = queue_declare(queue: "queue_black", auto_delete: true)
-  #    bind1 = queue_bind(exchange: "test_exchange", routing_key: "black")
-  #    queue2 = queue_declare(queue: "queue_red", auto_delete: true)
-  #    bind2 = queue_bind(exchange: "test_exchange", routing_key: "red")
-  #    Chan.exec(recv_chan, [exchange, queue1, bind1, queue2, bind2])
-  #
-  #    # send
-  #    Chan.publish(chan, "test_exchange", "black", "hello black exchange!")
-  #    Chan.publish(chan, "test_exchange", "red", "hello red exchange!")
-  #
-  #    :ok = Chan.close(conn)
-  #
-  #    # receive
-  #    assert "hello black exchange!" = Chan.get_messages(recv_chan, "queue_black")
-  #    assert "hello red exchange!" = Chan.get_messages(recv_chan, "queue_red")
-  #
-  #    :ok = Chan.close(recv_conn)
-  #  end
 end

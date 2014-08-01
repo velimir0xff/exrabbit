@@ -65,6 +65,7 @@ defmodule Exrabbit.Records do
     # Simply imported
     :"exchange.bind", :"exchange.bind_ok", :"exchange.unbind", :"exchange.unbind_ok",
     :"queue.unbind", :"queue.unbind_ok",
+    :"basic.return",
   ] |> extract_all("rabbit_common/include/rabbit_framing.hrl")
 
   import Exrabbit.Records.Props
