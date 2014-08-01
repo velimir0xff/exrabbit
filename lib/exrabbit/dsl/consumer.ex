@@ -67,6 +67,10 @@ defmodule Exrabbit.Consumer.DSL do
     * Any other option accepted by `Exrabbit.Consumer.new` and
       `Exrabbit.Consumer.subscribe`.
 
+    * Alternatively, you may pass `config_name: <name>` option where `<name>`
+      will be looked up in the application env. If it points to a keyword list
+      or a map, it will be used as options for this module.
+
   """
   defmacro __using__(options) do
     imports = if Keyword.get(options, :import, true) do
@@ -74,6 +78,11 @@ defmodule Exrabbit.Consumer.DSL do
         import Exrabbit.Consumer
         alias Exrabbit.Message
       end
+    end
+
+    options = case Keyword.fetch(options, :config_name) do
+      {:ok, name} -> {:env, name}
+      :error -> {:final, options}
     end
 
     quote do
@@ -212,22 +221,22 @@ defmodule Exrabbit.Consumer.DSL do
 
   @doc false
   def post_init({:ok, state, options}, base_options) when is_list(options) do
-    new_state = init_consumer(state, Keyword.merge(base_options, options))
+    new_state = init_consumer(state, base_options, options)
     {:ok, new_state}
   end
 
   def post_init({:ok, state, timeout, options}, base_options) when is_list(options) do
-    new_state = init_consumer(state, Keyword.merge(base_options, options))
+    new_state = init_consumer(state, base_options, options)
     {:ok, new_state, timeout}
   end
 
   def post_init({:ok, state}, base_options) do
-    new_state = init_consumer(state, base_options)
+    new_state = init_consumer(state, base_options, [])
     {:ok, new_state}
   end
 
   def post_init({:ok, state, timeout}, base_options) do
-    new_state = init_consumer(state, base_options)
+    new_state = init_consumer(state, base_options, [])
     {:ok, new_state, timeout}
   end
 
@@ -283,8 +292,18 @@ defmodule Exrabbit.Consumer.DSL do
 
   ###
 
-  defp init_consumer(state, options) do
+  defp init_consumer(state, base_options, init_options) do
+    options = fetch_options(base_options) |> Enum.to_list |> Keyword.merge(init_options)
     consumer = Consumer.new(options) |> Consumer.subscribe(self(), [simple: false] ++ options)
     {consumer, state}
+  end
+
+  defp fetch_options({:final, options}), do: options
+
+  defp fetch_options({:env, name}) do
+    case Application.get_env(:exrabbit, name) do
+      dict when is_list(dict) or is_map(dict) -> Enum.to_list(dict)
+      other -> raise "Invalid Exrabbit.Consumer.DSL config for key #{inspect name}: #{inspect other}"
+    end
   end
 end

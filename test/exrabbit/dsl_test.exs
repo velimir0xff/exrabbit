@@ -19,6 +19,26 @@ defmodule TestConsumer do
   end
 end
 
+defmodule TestConsumerAppConfig do
+  use Exrabbit.Consumer.DSL,
+    config_name: :test_consumer_config
+
+  use GenServer
+
+  def start_link() do
+    GenServer.start_link(__MODULE__, [])
+  end
+
+  init [] do
+    {:ok, nil}
+  end
+
+  on %Message{body: body}, nil, consumer do
+    IO.puts "received #{body} (queue: #{consumer.queue})"
+    {:noreply, nil}
+  end
+end
+
 defmodule TestConsumerAck do
   use Exrabbit.Consumer.DSL,
     exchange: exchange_declare(exchange: "test_topic_x", type: "topic"),
@@ -106,6 +126,38 @@ defmodule ExrabbitTest.DSLTest do
 
       :ok = TestConsumer.shutdown(consumer_rose)
       :ok = TestConsumer.shutdown(consumer_orange)
+    end) == expected
+  end
+
+  test "basic dsl with app config" do
+    import ExUnit.CaptureIO
+
+    Application.put_env(:exrabbit, :test_consumer_config, %{
+      exchange: "test_config_topic_x",
+      new_queue: "qqq",
+      binding_key: "#",
+    })
+
+    expected = """
+      received hello (queue: qqq)
+      received bye (queue: qqq)
+      """
+
+    assert capture_io(fn ->
+      use Exrabbit.Records
+      exchange = exchange_declare(exchange: "test_config_topic_x", type: "topic")
+      producer = Producer.new(exchange: exchange)
+
+      {:ok, consumer} = TestConsumerAppConfig.start_link()
+
+      publish = fn message, key ->
+        Producer.publish(producer, message, routing_key: key)
+      end
+      publish.("hello", "1")
+      publish.("bye", "2")
+      Producer.shutdown(producer)
+
+      :ok = TestConsumerAppConfig.shutdown(consumer)
     end) == expected
   end
 

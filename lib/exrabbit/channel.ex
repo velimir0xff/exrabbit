@@ -188,7 +188,7 @@ defmodule Exrabbit.Channel do
   """
   @spec exchange_delete(chan, binary) :: :ok
   @spec exchange_delete(chan, binary, Keyword.t) :: :ok
-  def exchange_delete(chan, name, options \\ []) when is_binary(options) do
+  def exchange_delete(chan, name, options \\ []) when is_binary(name) do
     method = exchange_delete(
       exchange: name,
       if_unused: Keyword.get(options, :if_unused, false),
