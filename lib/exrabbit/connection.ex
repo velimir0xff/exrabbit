@@ -1,4 +1,8 @@
 defmodule Exrabbit.Connection do
+  @moduledoc """
+  This module exposes functions for opening and closing a connection to broker.
+  """
+
   use Exrabbit.Records
 
   defstruct [conn: nil, chan: nil]
@@ -16,10 +20,11 @@ defmodule Exrabbit.Connection do
     * `host: <string>` - broker host
     * `virtual_host: <string>` - the name of the virtual host in the broker
     * `heartbeat: <int>` - heartbeat interval in seconds (default: 1)
-    * `with_chan: <bool>` - when `true`, also opens a channel and puts it
-      into the returned struct
+    * `with_chan: <bool>` - open a channel and puts it into the returned struct;
+      default: `true`
 
   """
+  @spec open(Keyword.t) :: %Connection{}
   def open(options \\ []) do
     conn_settings = Keyword.merge([
       username: get_default(:username),
@@ -44,6 +49,19 @@ defmodule Exrabbit.Connection do
     end
   end
 
+  @doc """
+  Close previously established connection.
+  """
+  @spec close(%Connection{}) :: :ok
+  def close(%Connection{conn: conn, chan: chan}) do
+    if chan do
+      :ok = Exrabbit.Channel.close(chan)
+    end
+    :amqp_connection.close(conn)
+  end
+
+  ###
+
   defp open_channel(conn, options) do
     chan = Exrabbit.Channel.open(conn)
     case Keyword.fetch(options, :mode) do
@@ -53,18 +71,6 @@ defmodule Exrabbit.Connection do
     end
     chan
   end
-
-  @doc """
-  Close previously established connection.
-  """
-  def close(%Connection{conn: conn, chan: chan}) do
-    if chan do
-      :ok = Exrabbit.Channel.close(chan)
-    end
-    :amqp_connection.close(conn)
-  end
-
-  ###
 
   defp get_default(key) do
     Application.get_env(:exrabbit, key, default(key))
