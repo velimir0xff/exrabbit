@@ -10,6 +10,7 @@ defmodule Exrabbit.Channel do
 
   @type conn :: pid
   @type chan :: pid
+  @type await_confirms_result :: :ok | {:error, :timeout} | {:error, :nack}
 
   @doc """
   Open a new channel on an established connection.
@@ -34,6 +35,7 @@ defmodule Exrabbit.Channel do
   Once set, the mode cannot be changed afterwards.
   """
   @spec set_mode(chan, :confirm | :tx) :: :ok
+
   def set_mode(chan, :confirm) do
     confirm_select_ok() = :amqp_channel.call(chan, confirm_select())
     :ok
@@ -177,8 +179,8 @@ defmodule Exrabbit.Channel do
     * `:nack` - at least one message hasn't been confirmed
 
   """
-  @spec await_confirms(chan) :: :ok | {:error, :timeout} | {:error, :nack}
-  @spec await_confirms(chan, non_neg_integer) :: :ok | {:error, :timeout} | {:error, :nack}
+  @spec await_confirms(chan) :: await_confirms_result
+  @spec await_confirms(chan, non_neg_integer) :: await_confirms_result
   def await_confirms(chan, timeout \\ confirm_timeout) do
     case :amqp_channel.wait_for_confirms(chan, timeout) do
       :timeout -> {:error, :timeout}
