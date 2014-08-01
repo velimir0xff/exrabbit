@@ -1,4 +1,8 @@
 defmodule Exrabbit.Consumer do
+  @moduledoc """
+  Consumer abstraction over raw connection, channel, and queue.
+  """
+
   defstruct [conn: nil, chan: nil, queue: "", pid: nil, tag: nil]
   alias __MODULE__
   alias Exrabbit.Common
@@ -6,8 +10,13 @@ defmodule Exrabbit.Consumer do
   alias Exrabbit.Message
   use Exrabbit.Records
 
+  @type simple_message :: {:start, binary} | {:end, binary} | {:msg, binary, binary}
+  @type full_message :: Exrabbit.Records.basic_consume_ok
+                      | Exrabbit.Records.basic_cancel_ok
+                      | {Exrabbit.Records.basic_deliver, Exrabbit.Records.amqp_msg}
+
   @doc """
-  Create a new consumer bounds to a channel.
+  Create a new consumer bound to a channel.
 
   Opens a connection, sets up a channel on it and returns a `Consumer` struct.
 
@@ -18,23 +27,28 @@ defmodule Exrabbit.Consumer do
 
   ## Options
 
-    * `:chan` - instead of creating a new channel, use the supplied one
+    * `:chan` - instead of creating a new channel, use the supplied one.
 
     * `:conn_opts` - when no channel is supplied, a new connection will be
-      opened; this option allows overriding default connection options
+      opened; this option allows overriding default connection options, see
+      `Exrabbit.Connection.open` for more info.
 
-    * `:exchange` - An `exchange_declare` record (in which case it'll be
+    * `:exchange` - an `exchange_declare` record (in which case it'll be
       declared on the channel) or the name of an existing exchange (with `""`
       referring to the default exchange that is always available).
 
-    * `:queue` - A `queue_declare` record (which will be declared on the
+    * `:queue` - a `queue_declare` record (which will be declared on the
       channel) or the name of an existing queue.
 
-    * `:new_queue` - A string that will be used to declare a new exclusive
+    * `:new_queue` - a string that will be used to declare a new exclusive
       queue on the channel. If an empty string is passed, the name will be
       assigned by the broker.
 
+    * `:binding_key` - the binding key used when binding the queue to the
+      exchange.
+
   """
+  @spec new(Keyword.t) :: %Consumer{}
   def new(options) do
     %Connection{conn: conn, chan: chan} = Common.connection(options)
 
@@ -48,21 +62,35 @@ defmodule Exrabbit.Consumer do
   end
 
   @doc """
-  Close the connection initiated by the consumer.
+  Close the previously established connection.
   """
+  @spec shutdown(%Consumer{}) :: :ok
   def shutdown(%Consumer{conn: conn, chan: chan}) do
     Connection.close(%Connection{conn: conn, chan: chan})
   end
 
   @doc """
-  Subscribe a consumer to a queue.
+  Subscribe consumer to a queue.
 
   Returns a new `Consumer` struct that encapsulates the pid of the subcribed
   process and an internal tag that can be used to unsubscribe from the queue.
 
-  If the function is passed, a service process will be spawned inside of which
-  it will be invoked.
+  If a function is passed as the target, a service process will be spawned
+  inside of which it will be invoked.
+
+  ## Options
+
+    * `simple: <boolean>` - when `true` (default), the simple message format
+      will be used for incoming messages; when `false`, the full message format
+      will be used which uses records provided by the Erlang client
+
+    * any options defined in the `basic_consume` record from the Erlang client
+      with one exception: instead of `:arguments` use the key `:extra` to pass
+      any additional arguments supported by RabbitMQ extensions
+
   """
+  @spec subscribe(%Consumer{}, pid | ((simple_message | full_message) -> any)) :: %Consumer{}
+  @spec subscribe(%Consumer{}, pid | ((simple_message | full_message) -> any), Keyword.t) :: %Consumer{}
   def subscribe(consumer=%Consumer{chan: chan, queue: queue}, target, options \\ []) do
     simple_messages = Keyword.get(options, :simple, true)
     pid = case target do
@@ -91,17 +119,23 @@ defmodule Exrabbit.Consumer do
   @doc """
   Unsubscribe from the queue.
 
-  Returns a new `Consumer` struct.
+  Returns a new `Consumer` struct. The channel owned by the consumer is kept
+  open.
   """
+  @spec unsubscribe(%Consumer{}) :: %Consumer{}
+  def unsubscribe(consumer=%Consumer{tag: nil}) do
+    consumer
+  end
+
   def unsubscribe(consumer=%Consumer{chan: chan, tag: tag}) do
     basic_cancel_ok() = :amqp_channel.call(chan, basic_cancel(consumer_tag: tag))
     %Consumer{consumer | tag: nil, pid: nil}
   end
 
   @doc """
-  Blocks the current process until a new message arrives.
+  Block until a new message arrives and return its body.
 
-  Returns `{:ok, <message>}` or `{:error, <reason>}`.
+  Returns `{:ok, <message body>}` or `nil`.
   """
   def get_body(%Consumer{chan: chan, queue: queue}) do
     case do_get(chan, queue, true) do
@@ -110,6 +144,11 @@ defmodule Exrabbit.Consumer do
     end
   end
 
+  @doc """
+  Block until a new message arrives and return it.
+
+  Returns `{:ok, %Message{}}` or `nil`.
+  """
   def get(%Consumer{chan: chan, queue: queue}, options \\ []) do
     no_ack = Keyword.get(options, :no_ack, true)
 
@@ -126,26 +165,56 @@ defmodule Exrabbit.Consumer do
     end
   end
 
+  @doc """
+  Acknowledge received message.
+
+  The consumer has to be created with `no_ack: false` in order to use this
+  function.
+
+  Calls `Exrabbit.Channel.ack` under the hood.
+  """
+  @spec ack(%Consumer{}, %Message{}) :: :ok
+  @spec ack(%Consumer{}, %Message{}, Keyword.t) :: :ok
+  def ack(%Consumer{chan: chan}, %Message{delivery_tag: tag}, opts \\ []) do
+    Exrabbit.Channel.ack(chan, tag, opts)
+  end
+
+  @doc """
+  Reject received message.
+
+  The consumer has to be created with `no_ack: false` in order to use this
+  function.
+
+  Calls `Exrabbit.Channel.reject` under the hood.
+  """
+  @spec reject(%Consumer{}, %Message{}) :: :ok
+  @spec reject(%Consumer{}, %Message{}, Keyword.t) :: :ok
+  def reject(%Consumer{chan: chan}, %Message{delivery_tag: tag}, opts \\ []) do
+    Exrabbit.Channel.reject(chan, tag, opts)
+  end
+
+  @doc """
+  Reject one or more received messages.
+
+  The consumer has to be created with `no_ack: false` in order to use this
+  function.
+
+  Calls `Exrabbit.Channel.nack` under the hood.
+  """
+  @spec nack(%Consumer{}, %Message{}) :: :ok
+  @spec nack(%Consumer{}, %Message{}, Keyword.t) :: :ok
+  def nack(%Consumer{chan: chan}, %Message{delivery_tag: tag}, opts \\ []) do
+    Exrabbit.Channel.nack(chan, tag, opts)
+  end
+
+  ###
+
   defp do_get(chan, queue, no_ack) do
     case :amqp_channel.call(chan, basic_get(queue: queue, no_ack: no_ack)) do
       basic_get_empty() -> nil
       {basic_get_ok(), _content}=msg -> msg
     end
   end
-
-  def ack(%Consumer{chan: chan}, %Message{delivery_tag: tag}, opts \\ []) do
-    Exrabbit.Channel.ack(chan, tag, opts)
-  end
-
-  def nack(%Consumer{chan: chan}, %Message{delivery_tag: tag}, opts \\ []) do
-    Exrabbit.Channel.nack(chan, tag, opts)
-  end
-
-  def reject(%Consumer{chan: chan}, %Message{delivery_tag: tag}, opts \\ []) do
-    Exrabbit.Channel.reject(chan, tag, opts)
-  end
-
-  ###
 
   defp spawn_service_proc(fun, true) do
     spawn_link(fn -> service_loop_simple(fun) end)
