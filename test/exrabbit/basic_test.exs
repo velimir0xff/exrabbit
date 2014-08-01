@@ -230,6 +230,21 @@ defmodule ExrabbitTest.BasicTest do
     :ok = Consumer.shutdown(consumer)
   end
 
+  test "delete queue in use" do
+    queue = queue_declare(queue: "delete_queue_test", auto_delete: true)
+
+    producer = Producer.new(queue: queue)
+    Producer.publish(producer, "hello")
+
+    %Consumer{chan: chan} = Consumer.new(queue: queue)
+    #assert 0 = Exrabbit.Channel.queue_delete(chan, "delete_queue_test", if_unused: true)
+    assert {{:shutdown, {_, _, "PRECONDITION_FAILED" <> _}}, _} =
+      catch_exit(Exrabbit.Channel.queue_delete(chan, "delete_queue_test", if_empty: true))
+    # no consumer shutdown needed
+
+    Producer.shutdown(producer)
+  end
+
   ###
 
   defp produce(opts, fun) when is_function(fun) do

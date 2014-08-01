@@ -1,15 +1,22 @@
 defmodule Exrabbit.Channel do
+  @moduledoc """
+  This module exposes some channel-level AMQP methods.
+
+  Mostly the functions that don't belong in neither `Exrabbit.Producer` nor
+  `Exrabbit.Consumer` are kept here.
+  """
+
   use Exrabbit.Records
 
-  @confirm_timeout 15000
-
-  @type channel :: pid
+  @type conn :: pid
+  @type chan :: pid
 
   @doc """
   Open a new channel on an established connection.
 
   Returns a new channel or fails.
   """
+  @spec open(conn) :: chan | no_return
   def open(conn) when is_pid(conn) do
     {:ok, chan} = :amqp_connection.open_channel(conn)
     chan
@@ -18,7 +25,7 @@ defmodule Exrabbit.Channel do
   @doc """
   Close previously opened channel.
   """
-  @spec close(channel) :: :ok
+  @spec close(chan) :: :ok
   def close(chan), do: :amqp_channel.close(chan)
 
   @doc """
@@ -26,8 +33,7 @@ defmodule Exrabbit.Channel do
 
   Once set, the mode cannot be changed afterwards.
   """
-  @spec set_mode(channel, :confirm | :tx) :: :ok
-
+  @spec set_mode(chan, :confirm | :tx) :: :ok
   def set_mode(chan, :confirm) do
     confirm_select_ok() = :amqp_channel.call(chan, confirm_select())
     :ok
@@ -38,11 +44,27 @@ defmodule Exrabbit.Channel do
     :ok
   end
 
+  @doc """
+  Set QoS (Quality of Service) on the channel.
+
+  The second argument should be an `Exrabbit.Records.basic_qos` record.
+  """
+  @spec set_qos(chan, Exrabbit.Records.basic_qos) :: :ok
   def set_qos(chan, basic_qos()=qos) do
     basic_qos_ok() = :amqp_channel.call(chan, qos)
     :ok
   end
 
+  @doc """
+  Acknowledge a message.
+
+  ## Options
+
+    * `multiple: <boolean>` - when `true`, acknowledges all messages up to and
+      including the current one in a single request; default: `false`
+
+  """
+  @spec ack(chan, binary, Keyword.t) :: :ok
   def ack(chan, tag, opts \\ []) do
     method = basic_ack(
       delivery_tag: tag,
@@ -51,6 +73,19 @@ defmodule Exrabbit.Channel do
     :amqp_channel.call(chan, method)
   end
 
+  @doc """
+  Reject a message (RabbitMQ extension).
+
+  ## Options
+
+    * `multiple: <boolean>` - reject all messages up to and including the
+      current one; default: `false`
+
+    * `requeue: <boolean>` - put rejected messages back into the queue;
+      default: `true`
+
+  """
+  @spec nack(chan, binary, Keyword.t) :: :ok
   def nack(chan, tag, opts \\ []) do
     method = basic_nack(
       delivery_tag: tag,
@@ -60,6 +95,15 @@ defmodule Exrabbit.Channel do
     :amqp_channel.call(chan, method)
   end
 
+  @doc """
+  Reject a message.
+
+  ## Options
+
+    * `requeue: <boolean>` - put the message back into the queue; default: `true`
+
+  """
+  @spec reject(chan, binary, Keyword.t) :: :ok
   def reject(chan, tag, opts \\ []) do
     method = basic_reject(
       delivery_tag: tag,
@@ -68,6 +112,16 @@ defmodule Exrabbit.Channel do
     :amqp_channel.call(chan, method)
   end
 
+  @doc """
+  Delete an exchange.
+
+  ## Options
+
+    * `if_unused: <boolean>` - only delete the exchange if it has no queue
+      bindings
+
+  """
+  @spec exchange_delete(chan, binary, Keyword.t) :: :ok
   def exchange_delete(chan, name, options \\ []) do
     method = exchange_delete(
       exchange: name,
@@ -82,6 +136,7 @@ defmodule Exrabbit.Channel do
 
   Returns the number of messages it contained.
   """
+  @spec queue_purge(chan, binary) :: non_neg_integer
   def queue_purge(chan, name) do
     method = queue_purge(queue: name)
     queue_purge_ok(message_count: cnt) = :amqp_channel.call(chan, method)
@@ -92,7 +147,16 @@ defmodule Exrabbit.Channel do
   Delete a queue.
 
   Returns the number of messages it contained.
+
+  ## Options
+
+    * `if_unused: <boolean>` - only delete the queue if it has no consumers
+      (this options doesn't seem to work in the underlying Erlang client)
+
+    * `if_empty: <boolean>` - only delete the queue if it has no messages
+
   """
+  @spec queue_delete(chan, binary, Keyword.t) :: non_neg_integer
   def queue_delete(chan, name, options \\ []) do
     method = queue_delete(
       queue: name,
@@ -103,7 +167,19 @@ defmodule Exrabbit.Channel do
     cnt
   end
 
-  def await_confirms(chan, timeout \\ @confirm_timeout) do
+  @doc """
+  Await for message confirms.
+
+  Returns `:ok` or `{:error, <reason>}` where `<reason>` can be one of the
+  following:
+
+    * `:timeout` - the timeout has run out before reply was received
+    * `:nack` - at least one message hasn't been confirmed
+
+  """
+  @spec await_confirms(chan) :: :ok | {:error, :timeout} | {:error, :nack}
+  @spec await_confirms(chan, non_neg_integer) :: :ok | {:error, :timeout} | {:error, :nack}
+  def await_confirms(chan, timeout \\ confirm_timeout) do
     case :amqp_channel.wait_for_confirms(chan, timeout) do
       :timeout -> {:error, :timeout}
       false    -> {:error, :nack}
@@ -119,4 +195,5 @@ defmodule Exrabbit.Channel do
     :amqp_channel.call channel, basic_publish(exchange: exchange, routing_key: routing_key), amqp_msg(props: pbasic(reply_to: reply_to, headers: ({"uuid", :longstr, uuid})  ), payload: message)
   end
 
+  defp confirm_timeout, do: Application.get_env(:exrabbit, :confirm_timeout, 15000)
 end

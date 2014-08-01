@@ -52,7 +52,6 @@ defmodule Exrabbit.Records do
 
     # Used internally
     :"exchange.declare_ok", :"exchange.delete_ok",
-    :"exchange.bind", :"exchange.bind_ok",
 
     :"queue.declare_ok", :"queue.bind", :"queue.bind_ok",
     :"queue.purge_ok", :"queue.delete_ok",
@@ -64,7 +63,7 @@ defmodule Exrabbit.Records do
     :"tx.select_ok",
 
     # Simply imported
-    :"exchange.unbind", :"exchange.unbind_ok",
+    :"exchange.bind", :"exchange.bind_ok", :"exchange.unbind", :"exchange.unbind_ok",
     :"queue.unbind", :"queue.unbind_ok",
   ] |> extract_all("rabbit_common/include/rabbit_framing.hrl")
 
