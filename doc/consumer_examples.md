@@ -1,5 +1,5 @@
-Basic Consumer API
-==================
+Exrabbit.Consumer examples
+==========================
 
 ## Consumer acknowledgements
 

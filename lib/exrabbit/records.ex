@@ -60,7 +60,7 @@ defmodule Exrabbit.Records do
     :"basic.cancel_ok", :"basic.qos_ok",
 
     :"confirm.select_ok",
-    :"tx.select_ok",
+    :"tx.select_ok", :"tx.commit", :"tx.commit_ok", :"tx.rollback", :"tx.rollback_ok",
 
     # Simply imported
     :"exchange.bind", :"exchange.bind_ok", :"exchange.unbind", :"exchange.unbind_ok",

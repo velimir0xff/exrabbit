@@ -110,6 +110,24 @@ defmodule Exrabbit.Producer do
     Exrabbit.Channel.await_confirms(chan, timeout)
   end
 
+  @doc """
+  Commit current transaction.
+
+  Calls `Exrabbit.Channel.commit/1` under the hood.
+  """
+  def commit(%Producer{chan: chan}) do
+    Exrabbit.Channel.commit(chan)
+  end
+
+  @doc """
+  Rollback current transaction.
+
+  Calls `Exrabbit.Channel.rollback/1` under the hood.
+  """
+  def rollback(%Producer{chan: chan}) do
+    Exrabbit.Channel.rollback(chan)
+  end
+
   ###
 
   defp publish(chan, exchange, routing_key, message, false, _) do

@@ -115,6 +115,28 @@ defmodule Exrabbit.Channel do
   end
 
   @doc """
+  Commit current transaction.
+
+  See http://www.rabbitmq.com/amqp-0-9-1-reference.html#tx.commit for details.
+  """
+  @spec commit(chan) :: :ok
+  def commit(chan) do
+    tx_commit_ok() = :amqp_channel.call(chan, tx_commit())
+    :ok
+  end
+
+  @doc """
+  Rollback current transaction.
+
+  See http://www.rabbitmq.com/amqp-0-9-1-reference.html#tx.rollback for details.
+  """
+  @spec rollback(chan) :: :ok
+  def rollback(chan) do
+    tx_rollback_ok() = :amqp_channel.call(chan, tx_rollback())
+    :ok
+  end
+
+  @doc """
   Delete an exchange.
 
   ## Options

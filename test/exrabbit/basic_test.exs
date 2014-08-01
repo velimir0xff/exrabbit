@@ -217,7 +217,7 @@ defmodule ExrabbitTest.BasicTest do
     assert :ok = Producer.publish(producer, "1")
     assert :ok = Producer.publish(producer, "2")
     assert :ok = Producer.publish(producer, "3")
-    assert :ok = Exrabbit.Channel.await_confirms(pchan, 100)
+    assert :ok = Producer.await_confirms(producer, 100)
 
     :ok = Producer.shutdown(producer)
     # end send
@@ -243,6 +243,37 @@ defmodule ExrabbitTest.BasicTest do
     # no consumer shutdown needed
 
     Producer.shutdown(producer)
+  end
+
+  test "transaction" do
+    queue = queue_declare(queue: "tx_test", auto_delete: true)
+
+    # receive
+    consumer = Consumer.new(queue: queue)
+
+    # send
+    producer = %Producer{chan: pchan} = Producer.new(queue: "tx_test")
+
+    Exrabbit.Channel.set_mode(pchan, :tx)
+    assert :ok = Producer.publish(producer, "hi")
+    assert :ok = Producer.publish(producer, "1")
+    assert :ok = Producer.publish(producer, "2")
+    assert :ok = Producer.publish(producer, "3")
+    assert :ok = Producer.commit(producer)
+
+    assert :ok = Producer.publish(producer, "donut")
+    assert :ok = Producer.rollback(producer)
+
+    :ok = Producer.shutdown(producer)
+    # end send
+
+    assert {:ok, "hi"} = Consumer.get_body(consumer)
+    assert {:ok, "1"} = Consumer.get_body(consumer)
+    assert {:ok, "2"} = Consumer.get_body(consumer)
+    assert {:ok, "3"} = Consumer.get_body(consumer)
+    assert nil = Consumer.get_body(consumer)
+
+    :ok = Consumer.shutdown(consumer)
   end
 
   ###

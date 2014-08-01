@@ -171,7 +171,7 @@ defmodule Exrabbit.Consumer do
   The consumer has to be created with `no_ack: false` in order to use this
   function.
 
-  Calls `Exrabbit.Channel.ack` under the hood.
+  Calls `Exrabbit.Channel.ack/3` under the hood.
   """
   @spec ack(%Consumer{}, %Message{}) :: :ok
   @spec ack(%Consumer{}, %Message{}, Keyword.t) :: :ok
@@ -185,7 +185,7 @@ defmodule Exrabbit.Consumer do
   The consumer has to be created with `no_ack: false` in order to use this
   function.
 
-  Calls `Exrabbit.Channel.reject` under the hood.
+  Calls `Exrabbit.Channel.reject/3` under the hood.
   """
   @spec reject(%Consumer{}, %Message{}) :: :ok
   @spec reject(%Consumer{}, %Message{}, Keyword.t) :: :ok
@@ -199,7 +199,7 @@ defmodule Exrabbit.Consumer do
   The consumer has to be created with `no_ack: false` in order to use this
   function.
 
-  Calls `Exrabbit.Channel.nack` under the hood.
+  Calls `Exrabbit.Channel.nack/3` under the hood.
   """
   @spec nack(%Consumer{}, %Message{}) :: :ok
   @spec nack(%Consumer{}, %Message{}, Keyword.t) :: :ok
