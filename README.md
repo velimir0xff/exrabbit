@@ -18,8 +18,8 @@ makes writing common types of AMQP consumers a breeze.
 The current version is based on rabbitmq-erlang-client v3.3.0 (AMQP 0-9-1 with
 extensions).
 
-_Project status_: this is still in alpha. The API may change as the development
-goes on.
+_Project status: this is still in alpha. The API may change as the development
+goes on_.
 
 
 ## Installation
