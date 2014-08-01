@@ -70,11 +70,19 @@ defmodule Exrabbit.Producer do
 
   ## Options
 
-    * `exchange: <binary>` - override the exchange
-    * `routing_key: <binary>` - the routing_key for the message
+    * `exchange: <binary>` - override the exchange.
+
+    * `routing_key: <binary>` - the routing_key for the message.
+
+    * `headers: <list>` - use this instead of the routing key when working with
+      'headers' exchanges. See http://stackoverflow.com/a/19418225/213682 for
+      a description of the list format. This option is ignored when passing
+      `amqp_msg` record.
+
     * `await_confirm: <boolean>` - await for this (and previously unconfirmed)
-      message to be confirmed by the broker; default: `false`
-    * `timeout: <integer>` - timeout to use when waiting for confirmation
+      message to be confirmed by the broker. Default: `false`.
+
+    * `timeout: <integer>` - timeout to use when waiting for confirmation.
 
   """
   @spec publish(%Producer{}, binary) :: Exrabbit.Channel.await_confirms_result
@@ -85,9 +93,10 @@ defmodule Exrabbit.Producer do
 
     exchange = Keyword.get(options, :exchange, "")
     routing_key = Keyword.get(options, :routing_key, "")
+    headers = Keyword.get(options, :headers, [])
     wait = Keyword.get(options, :await_confirm, false)
     timeout = Keyword.get(options, :timeout, nil)
-    publish(chan, exchange, routing_key, message, wait, timeout)
+    publish(chan, exchange, routing_key, headers, message, wait, timeout)
   end
 
   @doc """
@@ -132,12 +141,12 @@ defmodule Exrabbit.Producer do
 
   ###
 
-  defp publish(chan, exchange, routing_key, message, false, _) do
-    do_publish(chan, exchange, routing_key, message)
+  defp publish(chan, exchange, routing_key, headers, message, false, _) do
+    do_publish(chan, exchange, routing_key, headers, message)
   end
 
-  defp publish(chan, exchange, routing_key, message, true, timeout) do
-    :ok = do_publish(chan, exchange, routing_key, message)
+  defp publish(chan, exchange, routing_key, headers, message, true, timeout) do
+    :ok = do_publish(chan, exchange, routing_key, headers, message)
     if timeout do
       Exrabbit.Channel.await_confirms(chan, timeout)
     else
@@ -145,13 +154,13 @@ defmodule Exrabbit.Producer do
     end
   end
 
-  defp do_publish(chan, exchange, routing_key, message) when is_binary(message) do
+  defp do_publish(chan, exchange, routing_key, headers, message) when is_binary(message) do
     method = basic_publish(exchange: exchange, routing_key: routing_key)
-    msg = amqp_msg(payload: message)
+    msg = amqp_msg(payload: message, props: pbasic(headers: headers))
     :amqp_channel.call(chan, method, msg)
   end
 
-  defp do_publish(chan, exchange, routing_key, amqp_msg()=msg) do
+  defp do_publish(chan, exchange, routing_key, _headers, amqp_msg()=msg) do
     method = basic_publish(exchange: exchange, routing_key: routing_key)
     :amqp_channel.call(chan, method, msg)
   end
