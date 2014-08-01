@@ -1,2 +1,2 @@
-%{"amqp_client": {:git, "git://github.com/d0rc/amqp_client.git", "16b6c421139dba0a34d6c1e26f56c1dde5057a7f", []},
+%{"amqp_client": {:git, "git://github.com/issuu/amqp_client.git", "16b6c421139dba0a34d6c1e26f56c1dde5057a7f", []},
   "rabbit_common": {:git, "git://github.com/issuu/rabbit_common.git", "e3484d3ea4d9b57ae12da58c5c9dcf529a686139", [tag: "v3.3.0"]}}

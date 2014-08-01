@@ -17,7 +17,7 @@ defmodule Exrabbit.Mixfile do
 
   defp deps do
     [
-      {:amqp_client, github: "d0rc/amqp_client"},
+      {:amqp_client, github: "issuu/amqp_client"},
     ]
   end
 end
