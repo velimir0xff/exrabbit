@@ -66,6 +66,7 @@ defmodule Exrabbit.Channel do
       including the current one in a single request; default: `false`
 
   """
+  @spec ack(chan, binary) :: :ok
   @spec ack(chan, binary, Keyword.t) :: :ok
   def ack(chan, tag, opts \\ []) do
     method = basic_ack(
@@ -87,6 +88,7 @@ defmodule Exrabbit.Channel do
       default: `true`
 
   """
+  @spec nack(chan, binary) :: :ok
   @spec nack(chan, binary, Keyword.t) :: :ok
   def nack(chan, tag, opts \\ []) do
     method = basic_nack(
@@ -105,6 +107,7 @@ defmodule Exrabbit.Channel do
     * `requeue: <boolean>` - put the message back into the queue; default: `true`
 
   """
+  @spec reject(chan, binary) :: :ok
   @spec reject(chan, binary, Keyword.t) :: :ok
   def reject(chan, tag, opts \\ []) do
     method = basic_reject(
@@ -112,6 +115,44 @@ defmodule Exrabbit.Channel do
       requeue: Keyword.get(opts, :requeue, true)
     )
     :amqp_channel.call(chan, method)
+  end
+
+  @doc """
+  Await for message confirms.
+
+  Returns `:ok` or `{:error, <reason>}` where `<reason>` can be one of the
+  following:
+
+    * `:timeout` - the timeout has run out before reply was received
+    * `:nack` - at least one message hasn't been confirmed
+
+  """
+  @spec await_confirms(chan) :: await_confirms_result
+  @spec await_confirms(chan, non_neg_integer) :: await_confirms_result
+  def await_confirms(chan, timeout \\ confirm_timeout) do
+    case :amqp_channel.wait_for_confirms(chan, timeout) do
+      :timeout -> {:error, :timeout}
+      false    -> {:error, :nack}
+      true     -> :ok
+    end
+  end
+
+  @doc """
+  Redeliver all currently unacknowledged messages.
+
+  ## Options
+
+    * `requeue: <boolean>` - when `false` (default), the messages will be
+      redelivered to the original consumer; when `true`, the messages will be
+      put back into the queue and potentially be delivered to another consumer
+      of that queue
+
+  """
+  @spec recover(chan) :: :ok
+  @spec recover(chan, Keyword.t) :: :ok
+  def recover(chan, options \\ []) do
+    basic_recover_ok() = :amqp_channel.call(chan, basic_recover(requeue: Keyword.get(options, :requeue, false)))
+    :ok
   end
 
   @doc """
@@ -145,8 +186,9 @@ defmodule Exrabbit.Channel do
       bindings
 
   """
+  @spec exchange_delete(chan, binary) :: :ok
   @spec exchange_delete(chan, binary, Keyword.t) :: :ok
-  def exchange_delete(chan, name, options \\ []) do
+  def exchange_delete(chan, name, options \\ []) when is_binary(options) do
     method = exchange_delete(
       exchange: name,
       if_unused: Keyword.get(options, :if_unused, false),
@@ -161,7 +203,7 @@ defmodule Exrabbit.Channel do
   Returns the number of messages it contained.
   """
   @spec queue_purge(chan, binary) :: non_neg_integer
-  def queue_purge(chan, name) do
+  def queue_purge(chan, name) when is_binary(name) do
     method = queue_purge(queue: name)
     queue_purge_ok(message_count: cnt) = :amqp_channel.call(chan, method)
     cnt
@@ -180,8 +222,9 @@ defmodule Exrabbit.Channel do
     * `if_empty: <boolean>` - only delete the queue if it has no messages
 
   """
+  @spec queue_delete(chan, binary) :: non_neg_integer
   @spec queue_delete(chan, binary, Keyword.t) :: non_neg_integer
-  def queue_delete(chan, name, options \\ []) do
+  def queue_delete(chan, name, options \\ []) when is_binary(name) do
     method = queue_delete(
       queue: name,
       if_unused: Keyword.get(options, :if_unused, false),
@@ -189,26 +232,6 @@ defmodule Exrabbit.Channel do
     )
     queue_delete_ok(message_count: cnt) = :amqp_channel.call(chan, method)
     cnt
-  end
-
-  @doc """
-  Await for message confirms.
-
-  Returns `:ok` or `{:error, <reason>}` where `<reason>` can be one of the
-  following:
-
-    * `:timeout` - the timeout has run out before reply was received
-    * `:nack` - at least one message hasn't been confirmed
-
-  """
-  @spec await_confirms(chan) :: await_confirms_result
-  @spec await_confirms(chan, non_neg_integer) :: await_confirms_result
-  def await_confirms(chan, timeout \\ confirm_timeout) do
-    case :amqp_channel.wait_for_confirms(chan, timeout) do
-      :timeout -> {:error, :timeout}
-      false    -> {:error, :nack}
-      true     -> :ok
-    end
   end
 
   def rpc(channel, exchange, routing_key, message, reply_to) do

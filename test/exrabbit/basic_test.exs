@@ -300,6 +300,40 @@ defmodule ExrabbitTest.BasicTest do
     Producer.shutdown(producer)
   end
 
+  test "recover" do
+    queue = queue_declare(queue: "test_recover_queue", auto_delete: true)
+
+    # receive
+    consumer = %Consumer{chan: chan} = Consumer.new(queue: queue)
+    Exrabbit.Channel.queue_purge(chan, "test_recover_queue")
+
+    produce([queue: queue], ["night", "ash"])
+
+    assert {:ok, %Message{
+        routing_key: "test_recover_queue",
+        body: "night"}
+    } = Consumer.get(consumer, no_ack: false)
+
+    assert {:ok, %Message{
+        routing_key: "test_recover_queue",
+        body: "ash"}
+    } = Consumer.get(consumer, no_ack: false)
+
+    assert nil = Consumer.get(consumer)
+
+    assert :ok = Exrabbit.Channel.recover(chan, requeue: true)
+
+    assert {:ok, "night"} = Consumer.get_body(consumer)
+    assert {:ok, "ash"} = Consumer.get_body(consumer)
+    assert nil = Consumer.get_body(consumer)
+
+    # We didn't require an ack, so recover should be a no-op now
+    assert :ok = Exrabbit.Channel.recover(chan, requeue: true)
+    assert nil = Consumer.get_body(consumer)
+
+    :ok = Consumer.shutdown(consumer)
+  end
+
   ###
 
   defp produce(opts, fun) when is_function(fun) do
