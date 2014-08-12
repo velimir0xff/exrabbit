@@ -274,10 +274,12 @@ defmodule ExrabbitTest.DSLTest do
     import ExUnit.CaptureIO
 
     expected = ~S"""
-      received %{"hello" => "world", "list" => [1, 2, 3]} (queue: test_json_queue)
+      received %{hello: "world", list: [1, 2, 3]} (queue: test_json_queue)
       got decoding error with reason: {:invalid, "b"}
       received ["a", "b", "c"] (queue: test_json_queue)
       """
+
+    Application.put_env(:exrabbit, :format_options, [keys: :atoms])
 
     assert capture_io(fn ->
       {:ok, consumer} = TestConsumerJson.start_link()

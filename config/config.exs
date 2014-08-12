@@ -9,3 +9,6 @@ use Mix.Config
 
 # Default formatter
 #config :exrabbit, format: :json
+
+# Formatter options
+#config :exrabbit, format: :json, format_options: [keys: :atoms]
