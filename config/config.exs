@@ -6,3 +6,6 @@ use Mix.Config
 
 # Connection defaults
 #config :exrabbit, host: "localhost", username: "guest", password: "guest"
+
+# Default formatter
+#config :exrabbit, format: :json

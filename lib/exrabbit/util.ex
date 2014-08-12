@@ -20,7 +20,7 @@ defmodule Exrabbit.Util do
                   redelivered: rflag, exchange: exchange, routing_key: key),
     amqp_msg(props: props, payload: body)
   }, options) do
-    case decode_body(body, Keyword.get(options, :format)) do
+    case decode_body(body, Keyword.get(options, :format, false)) do
       {:ok, term} ->
         msg = %Message{
           consumer_tag: ctag, delivery_tag: dtag, redelivered: rflag,
@@ -37,7 +37,7 @@ defmodule Exrabbit.Util do
                  message_count: cnt),
     amqp_msg(props: props, payload: body)
   }, options) do
-    case decode_body(body, Keyword.get(options, :format)) do
+    case decode_body(body, Keyword.get(options, :format, false)) do
       {:ok, term} ->
         msg = %Message{
           delivery_tag: dtag, redelivered: rflag, exchange: exchange,
@@ -51,7 +51,18 @@ defmodule Exrabbit.Util do
   @doc false
   def encode_body(message, nil), do: message
 
+  def encode_body(message, false) do
+    case Application.fetch_env(:exrabbit, :format) do
+      {:ok, format} -> do_encode_body(message, format)
+      :error -> message
+    end
+  end
+
   def encode_body(message, format) when is_atom(format) do
+    do_encode_body(message, format)
+  end
+
+  defp do_encode_body(message, format) do
     mod = get_formatter_module(format)
     mod.encode(message)
   end
@@ -59,7 +70,18 @@ defmodule Exrabbit.Util do
   @doc false
   def decode_body(data, nil), do: {:ok, data}
 
+  def decode_body(data, false) do
+    case Application.fetch_env(:exrabbit, :format) do
+      {:ok, format} -> do_decode_body(data, format)
+      :error -> {:ok, data}
+    end
+  end
+
   def decode_body(data, format) when is_atom(format) do
+    do_decode_body(data, format)
+  end
+
+  defp do_decode_body(data, format) do
     mod = get_formatter_module(format)
     mod.decode(data)
   end

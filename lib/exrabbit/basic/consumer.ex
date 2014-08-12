@@ -171,7 +171,7 @@ defmodule Exrabbit.Consumer do
     case do_get(chan, queue, true) do
       nil -> nil
       {basic_get_ok(), amqp_msg(payload: body)} ->
-        Exrabbit.Util.decode_body(body, Keyword.get(options, :format))
+        Exrabbit.Util.decode_body(body, Keyword.get(options, :format, false))
     end
   end
 

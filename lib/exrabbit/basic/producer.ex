@@ -54,7 +54,7 @@ defmodule Exrabbit.Producer do
     Common.bind_queue(chan, exchange, queue, binding_key)
 
     routing_key = choose_routing_key(exchange, queue, binding_key)
-    format = Keyword.get(options, :format)
+    format = Keyword.get(options, :format, false)
     %Producer{conn: conn, chan: chan, exchange: exchange, routing_key: routing_key, format: format}
   end
 
