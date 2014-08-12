@@ -3,7 +3,7 @@ defmodule Exrabbit.Producer do
   Producer abstraction over raw connection, channel, and exchange.
   """
 
-  defstruct [conn: nil, chan: nil, exchange: "", routing_key: ""]
+  defstruct [conn: nil, chan: nil, exchange: "", routing_key: "", format: nil]
   alias __MODULE__
   alias Exrabbit.Common
   alias Exrabbit.Connection
@@ -54,7 +54,8 @@ defmodule Exrabbit.Producer do
     Common.bind_queue(chan, exchange, queue, binding_key)
 
     routing_key = choose_routing_key(exchange, queue, binding_key)
-    %Producer{conn: conn, chan: chan, exchange: exchange, routing_key: routing_key}
+    format = Keyword.get(options, :format)
+    %Producer{conn: conn, chan: chan, exchange: exchange, routing_key: routing_key, format: format}
   end
 
   @doc """
@@ -102,7 +103,7 @@ defmodule Exrabbit.Producer do
   """
   @spec publish(%Producer{}, binary) :: Exrabbit.Channel.await_confirms_result
   @spec publish(%Producer{}, binary, Keyword.t) :: Exrabbit.Channel.await_confirms_result
-  def publish(%Producer{chan: chan, exchange: x, routing_key: key}, message, options \\ []) do
+  def publish(%Producer{chan: chan, exchange: x, routing_key: key, format: format}, message, options \\ []) do
     validate_publish_options(options)
     options = Keyword.merge([exchange: x, routing_key: key], options)
 
@@ -116,7 +117,7 @@ defmodule Exrabbit.Producer do
     wait = Keyword.get(options, :await_confirm, false)
     flags = %{mandatory: mandatory, immediate: immediate, await_confirm: wait}
 
-    payload = Exrabbit.Util.encode_body(message, Keyword.get(options, :format, nil))
+    payload = Exrabbit.Util.encode_body(message, Keyword.get(options, :format, format))
     publish(chan, exchange, routing_key, headers, payload, flags, timeout)
   end
 
@@ -200,7 +201,7 @@ defmodule Exrabbit.Producer do
     binding_key
   end
 
-  @valid_options [:exchange, :routing_key, :mandatory, :immediate, :await_confirm, :timeout]
+  @valid_options [:exchange, :routing_key, :mandatory, :immediate, :await_confirm, :timeout, :format]
   defp validate_publish_options(options) do
     case Enum.partition(options, fn {k, _} -> k in @valid_options end) do
       {good, []} -> good

@@ -3,7 +3,7 @@ defmodule Exrabbit.Consumer do
   Consumer abstraction over raw connection, channel, and queue.
   """
 
-  defstruct [conn: nil, chan: nil, queue: "", pid: nil, tag: nil]
+  defstruct [conn: nil, chan: nil, queue: "", pid: nil, tag: nil, format: nil]
   alias __MODULE__
   alias Exrabbit.Common
   alias Exrabbit.Connection
@@ -62,7 +62,7 @@ defmodule Exrabbit.Consumer do
     binding_key = Keyword.get(options, :binding_key, nil)
     Common.bind_queue(chan, exchange, queue, binding_key)
 
-    %Consumer{conn: conn, chan: chan, queue: queue}
+    %Consumer{conn: conn, chan: chan, queue: queue, format: Keyword.get(options, :format)}
   end
 
   @doc """

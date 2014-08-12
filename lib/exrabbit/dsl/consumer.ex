@@ -14,6 +14,9 @@ defmodule Exrabbit.Consumer.DSL do
     * `on/2` and `on/3` - those are used to define handlers for incoming AMQP
       messages
 
+    * `on_error/2` - called when there was an error when parsing incoming
+      message
+
   In addition, two public functions are added to the module, both of which take
   the GenServer pid (or name) as an argument:
 
@@ -64,6 +67,8 @@ defmodule Exrabbit.Consumer.DSL do
     * `import: <boolean>` - when `true` (the default), imports
       `Exrabbit.Consumer` and aliases `Exrabbit.Message` to just `Message`.
 
+    * `format: <atom>` - the formatter to use when decoding incoming messages.
+
     * Any other option accepted by `Exrabbit.Consumer.new` and
       `Exrabbit.Consumer.subscribe`.
 
@@ -89,7 +94,7 @@ defmodule Exrabbit.Consumer.DSL do
       use Exrabbit.Records
 
       unquote(imports)
-      import unquote(__MODULE__), only: [init: 2, on: 3, on: 4]
+      import unquote(__MODULE__), only: [init: 2, on: 3, on: 4, on_error: 3]
       @__Exrabbit_Consumer_DSL_options__ unquote(options)
 
       def struct(pid) do
@@ -116,14 +121,22 @@ defmodule Exrabbit.Consumer.DSL do
         {:noreply, state}
       end
 
-      def handle_info({basic_deliver(), amqp_msg()}=incoming_msg, state) do
-        msg = Exrabbit.Util.parse_message(incoming_msg)
-        on_message(msg, state)
+      def handle_info({basic_deliver(), amqp_msg()}=incoming_msg, {consumer, _}=state) do
+        case Exrabbit.Util.parse_message(incoming_msg, format: consumer.format) do
+          {:ok, msg} -> on_message(msg, state)
+          {:error, reason} -> on_error(reason, state)
+        end
       end
 
       def terminate(_reason, {consumer, _state}) do
         unquote(__MODULE__).shutdown_consumer(consumer)
       end
+
+      defp on_error(_, state) do
+        {:noreply, state}
+      end
+
+      defoverridable [on_error: 2]
     end
   end
 
@@ -159,9 +172,6 @@ defmodule Exrabbit.Consumer.DSL do
 
   The first argument will be the message, the second one will be the state (as
   initially returned from `init/1`).
-
-  This macro will define an appropriate `handle_info/2` callback for the
-  GenServer.
 
   In addition to the normal return values expected from the `handle_info/2` it
   is possible to return one of the following, each of which will call the
@@ -215,6 +225,29 @@ defmodule Exrabbit.Consumer.DSL do
       defp on_message(unquote(message)=msg, {unquote(consumer)=consumer, unquote(state)}) do
         tuple = unquote(body)
         unquote(__MODULE__).wrap_info_result(tuple, msg, consumer)
+      end
+    end
+  end
+
+  @doc ~S"""
+  Handle a message parsing error.
+
+  The first argument will be the reason, the second one will be the state (as
+  initially returned from `init/1`).
+
+  ## Example
+
+      on_error reason, state do
+        IO.puts :stderr, "Got error: #{inspect reason}"
+        {:noreply, state}
+      end
+
+  """
+  defmacro on_error(error, state, do: body) do
+    quote do
+      defp on_error(unquote(error), {consumer, unquote(state)}) do
+        tuple = unquote(body)
+        unquote(__MODULE__).wrap_info_result(tuple, nil, consumer)
       end
     end
   end

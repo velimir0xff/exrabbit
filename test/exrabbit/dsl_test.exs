@@ -90,6 +90,34 @@ defmodule TestConsumerAckManual do
   end
 end
 
+defmodule TestConsumerJson do
+  use Exrabbit.Consumer.DSL,
+    queue: queue_declare(queue: "test_json_queue"),
+    format: :json
+
+  use GenServer
+
+  def start_link() do
+    GenServer.start_link(__MODULE__, [])
+  end
+
+  init [] do
+    {:ok, nil}
+  end
+
+  on %Message{body: body}, nil, consumer do
+    IO.puts "received #{inspect body} (queue: #{consumer.queue})"
+    {:noreply, nil}
+  end
+
+  on_error reason, nil do
+    IO.puts "got decoding error with reason: #{inspect reason}"
+    {:noreply, nil}
+  end
+end
+
+
+
 defmodule ExrabbitTest.DSLTest do
   use ExUnit.Case
 
@@ -212,6 +240,28 @@ defmodule ExrabbitTest.DSLTest do
 
       #%Consumer{chan: chan} = TestConsumerAckManual.struct(consumer)
       #assert 1 = Exrabbit.Channel.queue_purge(chan, "dsl_man_ack_queue")
+
+      :ok = TestConsumer.shutdown(consumer)
+    end) == expected
+  end
+
+  test "dsl with json" do
+    import ExUnit.CaptureIO
+
+    expected = ~S"""
+      received %{"hello" => "world", "list" => [1, 2, 3]} (queue: test_json_queue)
+      got decoding error with reason: {:invalid, "b"}
+      received ["a", "b", "c"] (queue: test_json_queue)
+      """
+
+    assert capture_io(fn ->
+      {:ok, consumer} = TestConsumerJson.start_link()
+
+      producer = Producer.new(queue: "test_json_queue", format: :json)
+      Producer.publish(producer, %{"hello" => "world", "list" => [1,2,3]})
+      Producer.publish(producer, "bad json", format: nil)
+      Producer.publish(producer, ["a", "b", "c"], format: :json)
+      Producer.shutdown(producer)
 
       :ok = TestConsumer.shutdown(consumer)
     end) == expected

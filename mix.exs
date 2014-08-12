@@ -11,13 +11,14 @@ defmodule Exrabbit.Mixfile do
   def application do
     [
       mod: { Exrabbit.Application, [] },
-      applications: [:amqp_client, :rabbit_common]
+      applications: [:amqp_client, :rabbit_common, :jazz]
     ]
   end
 
   defp deps do
     [
       {:amqp_client, github: "issuu/amqp_client"},
+      {:jazz, "~> 0.1.2"},
     ]
   end
 end
