@@ -187,8 +187,8 @@ defmodule Exrabbit.Consumer do
   @doc """
   Acknowledge received message.
 
-  The consumer has to be created with `no_ack: false` in order to use this
-  function.
+  This function can be used after calling `get`, or `subcribe` with `no_ack:
+  false`.
 
   Calls `Exrabbit.Channel.ack/3` under the hood.
   """
@@ -201,8 +201,8 @@ defmodule Exrabbit.Consumer do
   @doc """
   Reject received message.
 
-  The consumer has to be created with `no_ack: false` in order to use this
-  function.
+  This function can be used after calling `get`, or `subcribe` with `no_ack:
+  false`.
 
   Calls `Exrabbit.Channel.reject/3` under the hood.
   """
@@ -215,8 +215,8 @@ defmodule Exrabbit.Consumer do
   @doc """
   Reject one or more received messages.
 
-  The consumer has to be created with `no_ack: false` in order to use this
-  function.
+  This function can be used after calling `get`, or `subcribe` with `no_ack:
+  false`.
 
   Calls `Exrabbit.Channel.nack/3` under the hood.
   """
