@@ -159,28 +159,43 @@ defmodule Exrabbit.Consumer do
   @doc """
   Block until a new message arrives and return its body.
 
-  Returns `{:ok, <message body>}` or `nil`.
+  Returns `{:ok, <message body>}`, `{:error, <reason>}` or `nil` (if there was
+  no message).
+
+  ## Options
+
+    * `format: <atom>` - specify the formatter to use when decoding the message
+
   """
-  def get_body(%Consumer{chan: chan, queue: queue}) do
+  def get_body(%Consumer{chan: chan, queue: queue}, options \\ []) do
     case do_get(chan, queue, true) do
       nil -> nil
-      {basic_get_ok(), amqp_msg(payload: body)} -> {:ok, body}
+      {basic_get_ok(), amqp_msg(payload: body)} ->
+        Exrabbit.Util.decode_body(body, Keyword.get(options, :format))
     end
   end
 
   @doc """
   Block until a new message arrives and return it.
 
-  Returns `{:ok, %Message{}}` or `nil`.
+  Returns `{:ok, %Message{}}`, `{:error, <reason>}` or `nil` (if there was no
+  message).
+
+  ## Options
+
+    * `format: <atom>` - specify the formatter to use when decoding the message
+    * `no_ack: <boolean>` - when `false`, the message has to be ack'ed with the
+      broker; default: `true`
+
   """
   def get(%Consumer{chan: chan, queue: queue}, options \\ []) do
     no_ack = Keyword.get(options, :no_ack, true)
+    format = Keyword.get(options, :format)
 
     case do_get(chan, queue, no_ack) do
       nil -> nil
       {basic_get_ok(), amqp_msg()}=incoming_msg ->
-        msg = Exrabbit.Util.parse_message(incoming_msg)
-        {:ok, msg}
+        Exrabbit.Util.parse_message(incoming_msg, format: format)
     end
   end
 

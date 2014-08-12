@@ -391,7 +391,7 @@ defmodule ExrabbitTest.BasicTest do
       basic_consume_ok(consumer_tag: tag) -> send(pid, {self(), :amqp_started, tag})
       basic_cancel_ok(consumer_tag: tag) -> send(pid, {self(), :amqp_finished, tag})
       {basic_deliver(consumer_tag: consumer_tag), amqp_msg()}=incoming_msg ->
-        msg = Exrabbit.Util.parse_message(incoming_msg)
+        {:ok, msg} = Exrabbit.Util.parse_message(incoming_msg)
         send(pid, {self(), :amqp_received, {consumer_tag, msg.delivery_tag}, msg.body})
     end
   end

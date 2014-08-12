@@ -41,6 +41,8 @@ defmodule Exrabbit.Producer do
     * `:binding_key` - the binding key used when binding the queue to the
       exchange.
 
+    * `:format` - default format to be used in `publish/3`.
+
   """
   def new(options) do
     %Connection{conn: conn, chan: chan} = Common.connection(options)
@@ -90,6 +92,13 @@ defmodule Exrabbit.Producer do
 
     * `timeout: <integer>` - timeout to use when waiting for confirmation.
 
+    * `format: <atom>` - specify the formatter module to use when encoding the
+      message. By default the message is transmitted as is.
+
+      The atom is converted to uppercase <ATOM> and then the existence of
+      module named `Exrabbit.Formatter.<ATOM>` is checked. That module has to
+      implement the `Exrabbit.Formatter` behaviour.
+
   """
   @spec publish(%Producer{}, binary) :: Exrabbit.Channel.await_confirms_result
   @spec publish(%Producer{}, binary, Keyword.t) :: Exrabbit.Channel.await_confirms_result
@@ -107,7 +116,8 @@ defmodule Exrabbit.Producer do
     wait = Keyword.get(options, :await_confirm, false)
     flags = %{mandatory: mandatory, immediate: immediate, await_confirm: wait}
 
-    publish(chan, exchange, routing_key, headers, message, flags, timeout)
+    payload = Exrabbit.Util.encode_body(message, Keyword.get(options, :format, nil))
+    publish(chan, exchange, routing_key, headers, payload, flags, timeout)
   end
 
   @doc """
