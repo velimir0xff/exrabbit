@@ -5,7 +5,11 @@ use Mix.Config
 # standard RabbitMQ server setup.
 
 # Connection defaults
-#config :exrabbit, host: "localhost", username: "guest", password: "guest"
+#config :exrabbit, host: "localhost", username: "guest", password: "guest",
+#                  virtual_host: "/", heartbeat: 1
+
+# Global timeout for confirm-mode
+#config :exrabbit, confirm_timeout: 15000
 
 # Default formatter
 #config :exrabbit, format: :json

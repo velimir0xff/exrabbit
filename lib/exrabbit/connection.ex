@@ -31,7 +31,7 @@ defmodule Exrabbit.Connection do
       password: get_default(:password),
       host: get_default(:host) |> to_char_list,
       virtual_host: get_default(:virtual_host),
-      heartbeat: get_default(:hearbeat),
+      heartbeat: get_default(:heartbeat),
     ], options)
 
     {:ok, conn} = :amqp_connection.start(amqp_params_network(
@@ -80,5 +80,5 @@ defmodule Exrabbit.Connection do
   defp default(:password), do: "guest"
   defp default(:host), do: "localhost"
   defp default(:virtual_host), do: "/"
-  defp default(:hearbeat), do: 1
+  defp default(:heartbeat), do: 1
 end
