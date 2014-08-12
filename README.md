@@ -229,9 +229,9 @@ and subscribes to the queue to be notified of incoming messages:
 topical_exchange = Exrabbit.Records.exchange_declare(exchange: "more_logs", type: "topic")
 
 subscription_fun = fn
-  {:begin, _tag} -> IO.puts "Did subscribe"
-  {:end, _tag} -> IO.puts "Subscription ended"
-  {:msg, _tag, message} -> IO.puts "Received message from queue: #{message}"
+  {:begin, _ctag} -> IO.puts "Did subscribe"
+  {:end, _ctag} -> IO.puts "Subscription ended"
+  {:msg, {_ctag, _dtag}, message} -> IO.puts "Received message from queue: #{message}"
 end
 
 # Bind a new exclusive queue to the exchange and subscribe to it.
