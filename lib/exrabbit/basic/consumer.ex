@@ -10,10 +10,14 @@ defmodule Exrabbit.Consumer do
   alias Exrabbit.Message
   use Exrabbit.Records
 
-  @type simple_message :: {:start, binary} | {:end, binary} | {:msg, binary, binary}
-  @type full_message :: Exrabbit.Records.basic_consume_ok
-                      | Exrabbit.Records.basic_cancel_ok
-                      | %Exrabbit.Message{}
+  @typep consumer_tag :: binary
+  @typep delivery_tag :: binary
+  @typep simple_message :: {:begin, consumer_tag}
+                         | {:end, consumer_tag}
+                         | {:msg, {consumer_tag, delivery_tag}, binary}
+  @typep full_message :: Exrabbit.Records.basic_consume_ok
+                       | Exrabbit.Records.basic_cancel_ok
+                       | {Exrabbit.Records.basic_deliver, Exrabbit.Records.amqp_msg}
 
   @doc """
   Create a new consumer bound to a channel.
@@ -82,11 +86,31 @@ defmodule Exrabbit.Consumer do
 
     * `simple: <boolean>` - when `true` (default), the simple message format
       will be used for incoming messages; when `false`, the full message format
-      will be used which uses records provided by the Erlang client
+      will be used which uses records provided by the Erlang client.
+
+      The simple message format is comprised of the following 3 messages:
+
+        - `{:begin, ctag}`
+        - `{:end, ctag}`
+        - `{:msg, {ctag, dtag}, body}`
+
+      where `ctag` is the consumer tag set by the broker, `dtag` is the
+      delivery tag which can be used to acknowledge the message, and `body` is
+      the message body.
+
+      The full message format is defined by the following 3 messages:
+
+        - `basic_consume_ok()`
+        - `basic_cancel_ok()`
+        - `{basic_deliver(), amqp_msg()}`
+
+      These are all records imported from the Erlang client. The last message
+      can be passed to `Exrabbit.Util.parse_message/1` to get an
+      `%Exrabbit.Message{}` struct back.
 
     * any options defined in the `basic_consume` record from the Erlang client
       with one exception: instead of `:arguments` use the key `:extra` to pass
-      any additional arguments supported by RabbitMQ extensions
+      any additional arguments supported by RabbitMQ extensions.
 
   """
   @spec subscribe(%Consumer{}, pid | ((simple_message | full_message) -> any)) :: %Consumer{}
@@ -154,13 +178,8 @@ defmodule Exrabbit.Consumer do
 
     case do_get(chan, queue, no_ack) do
       nil -> nil
-      {basic_get_ok(delivery_tag: dtag, redelivered: rflag, exchange: exchange,
-                    routing_key: key, message_count: cnt),
-                    amqp_msg(props: props, payload: body)} ->
-        msg = %Message{
-          delivery_tag: dtag, redelivered: rflag, exchange: exchange,
-          routing_key: key, message_count: cnt, body: body, props: props,
-        }
+      {basic_get_ok(), amqp_msg()}=incoming_msg ->
+        msg = Exrabbit.Util.parse_message(incoming_msg)
         {:ok, msg}
     end
   end
@@ -232,8 +251,8 @@ defmodule Exrabbit.Consumer do
       basic_cancel_ok(consumer_tag: tag) ->
         fun.({:end, tag})
         :ok
-      {basic_deliver(consumer_tag: tag), amqp_msg(payload: body)} ->
-        fun.({:msg, tag, body})
+      {basic_deliver(consumer_tag: ctag, delivery_tag: dtag), amqp_msg(payload: body)} ->
+        fun.({:msg, {ctag, dtag}, body})
         service_loop_simple(fun)
     end
   end
@@ -246,8 +265,7 @@ defmodule Exrabbit.Consumer do
       basic_cancel_ok()=x ->
         fun.(x)
         :ok
-      {basic_deliver(), amqp_msg()}=incoming_msg ->
-        msg = Exrabbit.Util.parse_message(incoming_msg)
+      {basic_deliver(), amqp_msg()}=msg ->
         fun.(msg)
         service_loop(fun)
 

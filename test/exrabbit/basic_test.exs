@@ -82,7 +82,7 @@ defmodule ExrabbitTest.BasicTest do
     # receive
     consumer = %Consumer{pid: pid} =
       Consumer.new(exchange: exchange, new_queue: "")
-      |> Consumer.subscribe(subfun(self()))
+      |> Consumer.subscribe(subfun_full(self()), simple: false)
 
     assert_receive {^pid, :amqp_started, _}
     refute_receive _
@@ -115,7 +115,7 @@ defmodule ExrabbitTest.BasicTest do
 
     consumer2 = %Consumer{pid: pid2, tag: tag2} =
       Consumer.new(chan: chan, exchange: exchange, new_queue: "")
-      |> Consumer.subscribe(subfun(self()))
+      |> Consumer.subscribe(subfun_full(self()), simple: false)
 
     assert_receive {^pid1, :amqp_started, ^tag1}
     assert_receive {^pid2, :amqp_started, ^tag2}
@@ -126,9 +126,9 @@ defmodule ExrabbitTest.BasicTest do
     end)
 
     Enum.each([{pid1, tag1}, {pid2, tag2}], fn {pid, tag} ->
-      assert_receive {^pid, :amqp_received, ^tag, "hello"}
-      assert_receive {^pid, :amqp_received, ^tag, "it's"}
-      assert_receive {^pid, :amqp_received, ^tag, "me"}
+      assert_receive {^pid, :amqp_received, {^tag, _}, "hello"}
+      assert_receive {^pid, :amqp_received, {^tag, _}, "it's"}
+      assert_receive {^pid, :amqp_received, {^tag, _}, "me"}
     end)
     refute_receive _
 
@@ -169,6 +169,36 @@ defmodule ExrabbitTest.BasicTest do
     } = Consumer.get(consumer_black)
 
     :ok = Conn.close(conn)
+  end
+
+  test "subscribe with ack" do
+    queue = queue_declare(queue: "test_subscribe_ack_queue", auto_delete: true)
+
+    # receive
+    consumer = %Consumer{chan: chan, pid: pid, tag: tag} =
+      Consumer.new(queue: queue)
+      |> Consumer.subscribe(subfun(self()), no_ack: false)
+
+    assert_receive {^pid, :amqp_started, ^tag}
+
+    producer = Producer.new(queue: queue)
+    Producer.publish(producer, "hello")
+    Producer.publish(producer, "world")
+    :ok = Producer.shutdown(producer)
+
+    assert_receive {^pid, :amqp_received, {^tag, dtag}, "hello"}
+    assert :ok = Exrabbit.Channel.ack(chan, dtag)
+
+    assert_receive {^pid, :amqp_received, {^tag, dtag}, "world"}
+    assert :ok = Exrabbit.Channel.nack(chan, dtag)
+
+    assert_receive {^pid, :amqp_received, {^tag, dtag}, "world"}
+    assert :ok = Exrabbit.Channel.ack(chan, dtag)
+    refute_receive _
+
+    Consumer.unsubscribe(consumer)
+    assert_receive {^pid, :amqp_finished, ^tag}
+    refute_receive _
   end
 
   test "get with ack" do
@@ -353,6 +383,16 @@ defmodule ExrabbitTest.BasicTest do
       {:begin, tag} -> send(pid, {self(), :amqp_started, tag})
       {:end, tag} -> send(pid, {self(), :amqp_finished, tag})
       {:msg, tag, message} -> send(pid, {self(), :amqp_received, tag, message})
+    end
+  end
+
+  defp subfun_full(pid) do
+    fn
+      basic_consume_ok(consumer_tag: tag) -> send(pid, {self(), :amqp_started, tag})
+      basic_cancel_ok(consumer_tag: tag) -> send(pid, {self(), :amqp_finished, tag})
+      {basic_deliver(consumer_tag: consumer_tag), amqp_msg()}=incoming_msg ->
+        msg = Exrabbit.Util.parse_message(incoming_msg)
+        send(pid, {self(), :amqp_received, {consumer_tag, msg.delivery_tag}, msg.body})
     end
   end
 
