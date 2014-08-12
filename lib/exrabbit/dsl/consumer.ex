@@ -3,13 +3,13 @@ defmodule Exrabbit.Consumer.DSL do
   A DSL for writing GenServer consumers.
 
   In order to use this module, you need to call `use Exrabbit.Consumer.DSL,
-  <options>` and implement `init/1`.
+  <options>` and `init/1`.
 
   The DSL is comprised by the following macros that are imported into the
   caller:
 
     * `init` - use this instead of `def init(...) do` to automatically
-      initialized the consumer
+      initialize the consumer
 
     * `on/2` and `on/3` - those are used to define handlers for incoming AMQP
       messages
