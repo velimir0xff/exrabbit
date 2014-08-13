@@ -234,13 +234,5 @@ defmodule Exrabbit.Channel do
     cnt
   end
 
-  def rpc(channel, exchange, routing_key, message, reply_to) do
-    :amqp_channel.call channel, basic_publish(exchange: exchange, routing_key: routing_key), amqp_msg(props: pbasic(reply_to: reply_to), payload: message)
-  end
-
-  def rpc(channel, exchange, routing_key, message, reply_to, uuid) do
-    :amqp_channel.call channel, basic_publish(exchange: exchange, routing_key: routing_key), amqp_msg(props: pbasic(reply_to: reply_to, headers: ({"uuid", :longstr, uuid})  ), payload: message)
-  end
-
   defp confirm_timeout, do: Application.get_env(:exrabbit, :confirm_timeout, 15000)
 end
