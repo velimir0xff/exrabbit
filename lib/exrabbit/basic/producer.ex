@@ -9,6 +9,8 @@ defmodule Exrabbit.Producer do
   alias Exrabbit.Connection
   use Exrabbit.Records
 
+  @type message :: binary | %Exrabbit.Message{}
+
   @doc """
   Create a new producer bound to a channel.
 
@@ -69,7 +71,7 @@ defmodule Exrabbit.Producer do
   @doc """
   Publish a message to the producer's exchange.
 
-  The message can be a binary or an `amqp_msg` record.
+  The message can be a binary or an `%Exrabbit.Message{}` struct.
 
   ## Options
 
@@ -79,8 +81,10 @@ defmodule Exrabbit.Producer do
 
     * `headers: <list>` - use this instead of the routing key when working with
       'headers' exchanges. See http://stackoverflow.com/a/19418225/213682 for
-      a description of the list format. This option is ignored when passing
-      `amqp_msg` record.
+      a description of the list format.
+
+      When publish is called with an `%Exrabbit.Message{}` struct, the headers
+      are ignored.
 
     * `mandatory: <boolean>` - specify whether the message should be returned
       back to the client if it can't be routed.
@@ -101,8 +105,8 @@ defmodule Exrabbit.Producer do
       implement the `Exrabbit.Formatter` behaviour.
 
   """
-  @spec publish(%Producer{}, binary) :: Exrabbit.Channel.await_confirms_result
-  @spec publish(%Producer{}, binary, Keyword.t) :: Exrabbit.Channel.await_confirms_result
+  @spec publish(%Producer{}, message) :: Exrabbit.Channel.await_confirms_result
+  @spec publish(%Producer{}, message, Keyword.t) :: Exrabbit.Channel.await_confirms_result
   def publish(%Producer{chan: chan, exchange: x, routing_key: key, format: format}, message, options \\ []) do
     validate_publish_options(options)
     options = Keyword.merge([exchange: x, routing_key: key], options)
@@ -117,8 +121,9 @@ defmodule Exrabbit.Producer do
     wait = Keyword.get(options, :await_confirm, false)
     flags = %{mandatory: mandatory, immediate: immediate, await_confirm: wait}
 
-    payload = Exrabbit.Util.encode_body(message, Keyword.get(options, :format, format))
-    publish(chan, exchange, routing_key, headers, payload, flags, timeout)
+    #payload = Exrabbit.Util.encode_body(message, Keyword.get(options, :format, format))
+    final_message = encode_message(message, Keyword.get(options, :format, format), headers)
+    publish(chan, exchange, routing_key, final_message, flags, timeout)
   end
 
   @doc """
@@ -163,12 +168,12 @@ defmodule Exrabbit.Producer do
 
   ###
 
-  defp publish(chan, exchange, routing_key, headers, message, %{await_confirm: false}=flags, _) do
-    do_publish(chan, exchange, routing_key, headers, flags, message)
+  defp publish(chan, exchange, routing_key, message, %{await_confirm: false}=flags, _) do
+    do_publish(chan, exchange, routing_key, message, flags)
   end
 
-  defp publish(chan, exchange, routing_key, headers, message, %{await_confirm: true}=flags, timeout) do
-    :ok = do_publish(chan, exchange, routing_key, headers, flags, message)
+  defp publish(chan, exchange, routing_key, message, %{await_confirm: true}=flags, timeout) do
+    :ok = do_publish(chan, exchange, routing_key, message, flags)
     if timeout do
       Exrabbit.Channel.await_confirms(chan, timeout)
     else
@@ -176,22 +181,31 @@ defmodule Exrabbit.Producer do
     end
   end
 
-  defp do_publish(chan, exchange, routing_key, headers, flags, message) do
+  defp do_publish(chan, exchange, routing_key, message, flags) do
     method = basic_publish(
       exchange: exchange,
       routing_key: routing_key,
       mandatory: flags.mandatory,
       immediate: flags.immediate,
     )
-    msg = wrap_message(message, headers)
-    :amqp_channel.call(chan, method, msg)
+    :amqp_channel.call(chan, method, message)
   end
 
-  defp wrap_message(message, headers) when is_binary(message) do
-    amqp_msg(payload: message, props: pbasic(headers: headers))
+  defp encode_message(%Exrabbit.Message{body: body}=msg, format, headers) do
+    wrap_message(%Exrabbit.Message{msg | body: Exrabbit.Util.encode_body(body, format)}, headers)
   end
 
-  defp wrap_message(amqp_msg()=msg, _), do: msg
+  defp encode_message(body, format, headers) do
+    wrap_message(Exrabbit.Util.encode_body(body, format), headers)
+  end
+
+  defp wrap_message(%Exrabbit.Message{body: body, props: props}, _headers) do
+    amqp_msg(payload: body, props: props)
+  end
+
+  defp wrap_message(msg, headers) when is_binary(msg) do
+    amqp_msg(payload: msg, props: pbasic(headers: headers))
+  end
 
   defp choose_routing_key(_exchange, queue, nil) do
     queue
