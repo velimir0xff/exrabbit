@@ -4,7 +4,7 @@ defmodule Exrabbit.Mixfile do
   def project do
     [ app: :exrabbit,
       version: "0.9.0-alpha",
-      elixir: "~> 0.14.3",
+      elixir: "~> 1.0",
       deps: deps ]
   end
 
@@ -17,8 +17,8 @@ defmodule Exrabbit.Mixfile do
 
   defp deps do
     [
-      {:amqp_client, github: "issuu/amqp_client"},
-      {:jazz, "~> 0.1.2"},
+      {:amqp_client, github: "jbrisbin/amqp_client"},
+      {:jazz, "~> 0.2"},
     ]
   end
 end
