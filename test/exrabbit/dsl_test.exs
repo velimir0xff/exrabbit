@@ -142,6 +142,46 @@ defmodule TestConsumerBinary do
   end
 end
 
+defmodule Exrabbit.TestCustomerFormatter do
+  @behaviour Exrabbit.Formatter
+
+  def encode(int), do: Integer.to_string(int)
+  def decode(bin) do
+    try do
+      {:ok, String.to_integer(bin)}
+    catch
+      _, reason ->
+        {:error, reason}
+    end
+  end
+end
+
+defmodule TestConsumerCustomModule do
+  use Exrabbit.Consumer.DSL,
+    queue: queue_declare(queue: "test_custom_queue"),
+    format: Exrabbit.TestCustomerFormatter
+
+  use GenServer
+
+  def start_link() do
+    GenServer.start_link(__MODULE__, [])
+  end
+
+  init [] do
+    {:ok, nil}
+  end
+
+  on %Message{body: body}, nil, consumer do
+    IO.puts "received #{inspect body} (queue: #{consumer.queue})"
+    {:noreply, nil}
+  end
+
+  on_error reason, nil do
+    IO.puts "got decoding error with reason: #{inspect reason}"
+    {:noreply, nil}
+  end
+end
+
 
 defmodule ExrabbitTest.DSLTest do
   use ExUnit.Case
@@ -310,6 +350,28 @@ defmodule ExrabbitTest.DSLTest do
       Producer.publish(producer, %{"hello" => "world", "list" => [1,2,3]})
       Producer.publish(producer, "bad encoding", format: nil)
       Producer.publish(producer, ["a", "b", "c"])
+      Producer.shutdown(producer)
+
+      :ok = TestConsumer.shutdown(consumer)
+    end) == expected
+  end
+
+  test "dsl with custom formatter" do
+    import ExUnit.CaptureIO
+
+    expected = ~S"""
+      received 10 (queue: test_custom_queue)
+      got decoding error with reason: :badarg
+      received 42 (queue: test_custom_queue)
+      """
+
+    assert capture_io(fn ->
+      {:ok, consumer} = TestConsumerCustomModule.start_link()
+
+      producer = Producer.new(queue: "test_custom_queue", format: Exrabbit.TestCustomerFormatter)
+      Producer.publish(producer, 10)
+      Producer.publish(producer, "string", format: nil)
+      Producer.publish(producer, 42)
       Producer.shutdown(producer)
 
       :ok = TestConsumer.shutdown(consumer)
