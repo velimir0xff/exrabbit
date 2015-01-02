@@ -87,6 +87,9 @@ defmodule Exrabbit.Util do
   end
 
   defp get_formatter_module(atom) do
-    Module.concat([Exrabbit.Formatter, Atom.to_string(atom) |> String.upcase()])
+    case Atom.to_string(atom) do
+      "Elixir." <> _ -> atom
+      reference -> Module.concat(Exrabbit.Formatter, String.upcase(reference))
+    end
   end
 end
