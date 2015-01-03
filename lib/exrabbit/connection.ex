@@ -64,12 +64,15 @@ defmodule Exrabbit.Connection do
 
   defp open_channel(conn, options) do
     chan = Exrabbit.Channel.open(conn)
-    case Keyword.fetch(options, :mode) do
-      {:ok, mode} when mode in [:confirm, :tx] ->
-        :ok = Exrabbit.Channel.set_mode(chan, mode)
-      :error -> nil
-    end
+    Enum.each(options, &init_channel(chan, &1))
     chan
+  end
+
+  defp init_channel(chan, {:mode, mode}) when mode in [:confirm, :tx] do
+    :ok = Exrabbit.Channel.set_mode(chan, mode)
+  end
+  defp init_channel(chan, {:qos, qos}) do
+    :ok = Exrabbit.Channel.set_qos(chan, qos)
   end
 
   defp get_default(key) do
